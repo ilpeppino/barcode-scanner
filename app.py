@@ -6,6 +6,15 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 
+import time
+import re
+import requests
+
+import logging
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+logger = logging.getLogger(__name__)
+
 load_dotenv()
 
 SCOPES = ["https://www.googleapis.com/auth/tasks"]
@@ -21,7 +30,7 @@ def get_creds():
         creds = Credentials.from_authorized_user_file("token.json", SCOPES)
         if creds and creds.valid:
             return creds
-    # run local OAuth flow
+    # Run OAuth flow if no valid token found
     flow = InstalledAppFlow.from_client_secrets_file("credentials.json", SCOPES)
     creds = flow.run_local_server(port=0)
     with open("token.json", "w") as f:
@@ -55,6 +64,59 @@ def create_task(title, notes=None):
         body["notes"] = notes
     return service.tasks().insert(tasklist=tl_id, body=body).execute()
 
+
+# ---------- Barcode normalization, dedupe, and product lookup ----------
+
+def normalize_barcode(raw: str) -> str:
+    """Strip non-digits; convert 12-digit UPC-A to 13-digit EAN-13 by padding leading 0."""
+    digits = re.sub(r"\D+", "", raw or "")
+    if len(digits) == 12:  # UPC-A
+        return "0" + digits  # as EAN-13
+    return digits or (raw or "").strip()
+
+# cooldown memory to prevent duplicate inserts within a short window
+LAST_SEEN = {}  # code -> last_timestamp
+COOLDOWN_SEC = 3.0
+
+def is_recent_duplicate(code: str) -> bool:
+    now = time.time()
+    ts = LAST_SEEN.get(code, 0)
+    if now - ts < COOLDOWN_SEC:
+        return True
+    LAST_SEEN[code] = now
+    # light pruning
+    if len(LAST_SEEN) > 1000:
+        cutoff = now - COOLDOWN_SEC
+        for k in list(LAST_SEEN.keys()):
+            if LAST_SEEN[k] < cutoff:
+                LAST_SEEN.pop(k, None)
+    return False
+
+def lookup_product_title_notes(code: str):
+    """
+    Try Open Food Facts for a human-friendly name.
+    Returns (title, notes). Fallback to code as title.
+    """
+    try:
+        r = requests.get(f"https://world.openfoodfacts.org/api/v2/product/{code}.json", timeout=3)
+        if r.ok:
+            j = r.json()
+            if j.get("status") == 1:
+                p = j.get("product", {})
+                name = (p.get("product_name") or "").strip()
+                brand = (p.get("brands") or "").split(",")[0].strip()
+                title = " - ".join(x for x in [brand or None, name or None] if x) or code
+                notes = f"Barcode: {code}"
+                if p.get("quantity"):
+                    notes += f"\nQuantity: {p['quantity']}"
+                if p.get("categories"):
+                    notes += f"\nCategories: {p['categories']}"
+                if p.get("image_url"):
+                    notes += f"\nImage: {p['image_url']}"
+                return title, notes
+    except Exception:
+        pass
+    return code, None
 
 # ---------- Simple in-memory log ----------
 RECENT = []  # list of dicts {code, when}
@@ -160,9 +222,20 @@ MOBILE_HTML = """
     <div id="status"></div>
   </div>
 <script type="module">
+  // Check if getUserMedia exists (HTTPS required on mobile)
+  if (!("mediaDevices" in navigator) || !("getUserMedia" in navigator.mediaDevices)) {
+    const host = location.host;
+    document.write('<p class="err">Camera API not available. On mobile, this usually means the page is not opened over HTTPS. Try: <strong>https://' + host + '/mobile</strong>. On iOS, Chrome and Safari both require HTTPS for camera access.</p>');
+    throw new Error('getUserMedia unavailable');
+  }
+
   const tokenInput = document.getElementById('token');
   const v = document.getElementById('v');
   const status = document.getElementById('status');
+
+  // Persist token locally on the device
+  tokenInput.value = localStorage.getItem('ingestToken') || '';
+  tokenInput.addEventListener('change', () => localStorage.setItem('ingestToken', tokenInput.value.trim()));
 
   async function start() {
     try {
@@ -173,7 +246,7 @@ MOBILE_HTML = """
         status.innerHTML = '<p class="err">BarcodeDetector not supported. Use Chrome or Safari.</p>';
         return;
       }
-      const det = new BarcodeDetector({ formats: ['ean_13','ean_8','code_128','code_39','qr_code','upc_a','upc_e','itf'] });
+      const det = new BarcodeDetector({ formats: ['ean_13','ean_8','code_128','code_39','qr_code','itf'] });
       const seen = new Set();
       async function tick() {
         try {
@@ -182,8 +255,15 @@ MOBILE_HTML = """
             const code = b.rawValue.trim();
             if (code && !seen.has(code)) {
               seen.add(code);
-              const r = await fetch('/scan', { method:'POST', headers:{'Content-Type':'application/json'},
-                body: JSON.stringify({ code, token: tokenInput.value.trim() }) });
+              const token = tokenInput.value.trim();
+              const r = await fetch('/scan', {
+                method:'POST',
+                headers:{
+                  'Content-Type':'application/json',
+                  'X-Ingest-Token': token
+                },
+                body: JSON.stringify({ code, token })
+              });
               const j = await r.json();
               status.innerHTML = `<p class="${r.ok?'ok':'err'}">${j.message || JSON.stringify(j)}</p>`;
             }
@@ -217,14 +297,29 @@ def recent():
 @app.route("/scan", methods=["POST"])
 def scan():
     data = request.get_json(silent=True) or {}
-    if data.get("token") != INGEST_TOKEN:
+    # Accept token from JSON body, header, or query param for convenience
+    token = data.get("token") or request.headers.get("X-Ingest-Token") or request.args.get("token")
+    if token != INGEST_TOKEN:
+        logger.info("Auth failed from %s: provided token len=%s (expected non-empty). Hint: set INGEST_TOKEN in .env and enter same on /mobile.", request.remote_addr, len(token) if token else 0)
         abort(401)
-    code = (data.get("code") or "").strip()
-    if not code:
+
+    raw = (data.get("code") or "").strip()
+    logger.info("Received scan request from %s: %s", request.remote_addr, raw)
+    if not raw:
         return jsonify({"ok": False, "message": "Missing code"}), 400
-    create_task(title=code)
+
+    code = normalize_barcode(raw)
+    if is_recent_duplicate(code):
+        logger.info("Duplicate detected for code %s - ignoring", code)
+        log_scan(code + " (dup ignored)")
+        return jsonify({"ok": True, "message": f"Ignored duplicate: {code}"}), 200
+
+    title, notes = lookup_product_title_notes(code)
+    logger.info("Creating task for code %s with title '%s'", code, title)
+    create_task(title=title, notes=notes)
+    logger.info("Task created successfully for %s", code)
     log_scan(code)
-    return jsonify({"ok": True, "message": f"Added task: {code}"})
+    return jsonify({"ok": True, "message": f"Added task: {title}"}), 200
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=PORT, debug=True)
+    app.run(host="0.0.0.0", port=PORT, debug=True, ssl_context=("Giuseppes-MacBook-Air.local+1.pem", "Giuseppes-MacBook-Air.local+1-key.pem"))

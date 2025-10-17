@@ -1,0 +1,87 @@
+<!doctype html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Phone Scanner</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; margin: 16px; }
+    video { width: 100%; max-width: 520px; border-radius: 12px; }
+    input, button { padding: 10px 12px; margin: 6px 0; width: 100%; }
+    .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; }
+    .ok { color: #1a7f37; } .err { color: #b80000; }
+    .muted { color: #666; font-size: 0.9em; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>Scan with phone camera</h2>
+    <p class="muted">List: {{ active_list_title }}</p>
+    <input id="token" placeholder="INGEST_TOKEN" />
+    <video id="v" playsinline></video>
+    <div id="status"></div>
+  </div>
+
+<script type="module">
+  // Camera API requires HTTPS (or localhost). Show a helpful message if missing.
+  if (!("mediaDevices" in navigator) || !("getUserMedia" in navigator.mediaDevices)) {
+    const host = location.host;
+    document.write('<p class="err">Camera API not available. On mobile, this usually means the page is not opened over HTTPS. Try: <strong>https://' + host + '/mobile</strong>.</p>');
+    throw new Error('getUserMedia unavailable');
+  }
+
+  const tokenInput = document.getElementById('token');
+  const v = document.getElementById('v');
+  const status = document.getElementById('status');
+
+  // Remember the token on the device so you enter it only once
+  tokenInput.value = localStorage.getItem('ingestToken') || '';
+  tokenInput.addEventListener('change', () => localStorage.setItem('ingestToken', tokenInput.value.trim()));
+
+  async function start() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      v.srcObject = stream;
+      await v.play();
+
+      if (!('BarcodeDetector' in window)) {
+        status.innerHTML = '<p class="err">BarcodeDetector not supported. Use Chrome or Safari.</p>';
+        return;
+      }
+
+      // Formats include QR + common retail barcodes (UPC removed to avoid dup with EAN)
+      const det = new BarcodeDetector({ formats: ['ean_13','ean_8','code_128','code_39','qr_code','itf'] });
+      const seen = new Set();
+
+      async function tick() {
+        try {
+          const barcodes = await det.detect(v);
+          for (const b of barcodes) {
+            const code = (b.rawValue || '').trim();
+            const fmt = (b.format || '').toLowerCase();
+            if (code && !seen.has(code + '|' + fmt)) {
+              seen.add(code + '|' + fmt);
+              const token = tokenInput.value.trim();
+              const r = await fetch('/scan', {
+                method:'POST',
+                headers:{
+                  'Content-Type':'application/json',
+                  'X-Ingest-Token': token
+                },
+                body: JSON.stringify({ code, format: fmt, token })
+              });
+              const j = await r.json();
+              status.innerHTML = `<p class="${r.ok?'ok':'err'}">${j.message || JSON.stringify(j)}</p>`;
+            }
+          }
+        } catch(e) {}
+        requestAnimationFrame(tick);
+      }
+      tick();
+    } catch (e) {
+      status.innerHTML = `<p class="err">${e.message}</p>`;
+    }
+  }
+  start();
+</script>
+</body>
+</html>

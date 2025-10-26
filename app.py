@@ -9,6 +9,8 @@ from googleapiclient.discovery import build
 import time
 import re
 import requests
+import signal
+import subprocess
 
 import logging
 
@@ -23,7 +25,30 @@ INGEST_TOKEN = os.getenv("INGEST_TOKEN", "changeme")
 TASKLIST_ID = os.getenv("TASKLIST_ID", "").strip()
 TASKLIST_TITLE = os.getenv("TASKLIST_TITLE", "").strip()
 
-app = Flask(__name__)
+# Tell Flask where the Jinja templates actually live (they're under static/templates).
+app = Flask(__name__, template_folder="static/templates", static_folder="static")
+
+
+def free_port(port: int):
+    """Kill any leftover dev server still bound to the requested port."""
+    if os.name == "nt":
+        return  # Windows uses a different toolchain; skip to avoid surprises.
+    try:
+        output = subprocess.check_output(["lsof", "-ti", f"tcp:{port}"])  # macOS/Linux only
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return  # lsof not available or nothing is listening
+
+    for pid_str in output.decode().strip().splitlines():
+        if not pid_str:
+            continue
+        pid = int(pid_str)
+        if pid == os.getpid():
+            continue
+        try:
+            os.kill(pid, signal.SIGTERM)
+            logger.info("Killed leftover process %s holding port %s", pid, port)
+        except ProcessLookupError:
+            continue
 
 # ---------- Google Tasks helpers ----------
 def get_creds():
@@ -183,4 +208,18 @@ def scan():
     return jsonify({"ok": True, "message": f"Added task: {title}"}), 200
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=PORT, debug=True, ssl_context=("Giuseppes-MacBook-Air.local+1.pem", "Giuseppes-MacBook-Air.local+1-key.pem"))
+    # Only reclaim the port on the initial run; the reloader child shouldn't kill itself.
+    if os.environ.get("WERKZEUG_RUN_MAIN") != "true":
+        free_port(PORT)
+        logger.info("Ensuring Google OAuth token is available before starting server...")
+        try:
+            get_creds()
+        except Exception:
+            logger.exception("OAuth flow failed. Fix the issue above and restart the server.")
+            raise
+    app.run(
+        host="0.0.0.0",
+        port=PORT,
+        debug=True,
+        ssl_context=("Giuseppes-MacBook-Air.local+1.pem", "Giuseppes-MacBook-Air.local+1-key.pem"),
+    )

@@ -1,60 +1,142 @@
 # Barcode Scanner → Google Tasks
 
-A small Flask app that receives barcode scans, de-duplicates them, looks up friendly product info, and pushes the result into Google Tasks. It includes both a desktop dashboard (for USB scanners) and a mobile camera UI (using the browser’s `BarcodeDetector` API).
+This repository contains a small Flask application that lets you capture grocery barcodes and file them directly into Google Tasks. A desktop dashboard caters to USB “keyboard wedge” scanners, while a mobile-friendly camera UI uses the browser’s `BarcodeDetector` API for scanning on the go. The service normalizes and de-duplicates barcodes, enriches them with Open Food Facts data when available, and gives you quick visibility into recent captures.
 
-## Features
-- Accepts scans from a USB keyboard-style scanner or a phone camera at `/mobile`.
-- Adds each scan to the Google Task list you choose, including basic product details via Open Food Facts when available.
-- Rejects repeated scans that happen inside a short cooldown window.
-- Shows a rolling log of recent scans at `/`.
+---
 
-## Prerequisites
+## Overview
+
+| Component | Purpose |
+| --- | --- |
+| `app.py` | Flask application wrapping Google Tasks integration, dedupe logic, product lookup, and scanner status probing. |
+| `static/templates/dashboard.html` & `static/js/dashboard.js` | Browser dashboard for USB scanners, list management, recent scan log, and scanner health badge. |
+| `static/templates/mobile.html` & `static/js/mobile.js` | Minimal mobile UI that streams from the device camera and posts detected barcodes. |
+| `docs/qrcodes.pdf` | Handy printable QR codes that open the `/mobile` page for quick device pairing. |
+
+The workflow:
+
+1. A barcode scan (desktop or mobile) posts to `/scan` with the shared ingest token.
+2. The server normalizes the code, rejects duplicates within a 3‑second cooldown, and attempts an Open Food Facts lookup for title/notes enrichment.
+3. A task is inserted into the active Google Tasks list, and the scan is prepended to the in-memory “Recent scans” feed.
+4. The dashboard polls `/recent`, `/tasklists`, and `/scanner-status` to keep the UI live, and supports switching the active Google Tasks list at any time.
+
+---
+
+## Requirements
+
 - Python 3.10+ (developed against 3.11).
-- A Google Cloud project with the Google Tasks API enabled.
-- An OAuth client (Desktop type) downloaded as `credentials.json` in the project root.
-- Local TLS certificates so browsers allow the mobile camera (`Giuseppes-MacBook-Air.local+1.pem` and `Giuseppes-MacBook-Air.local+1-key.pem` are included for the original machine; replace with your own if needed).
+- A Google Cloud project with the **Google Tasks API** enabled.
+- An OAuth “Desktop” client downloaded as `credentials.json` in the repo root.
+- Local TLS certificates if you need HTTPS for camera access (the checked-in `Giuseppes-MacBook-Air.local+1.pem` pair are machine-specific; replace as needed).
 
-## Setup
-1. Create and activate a virtual environment (recommended):
+Optional but recommended:
+
+- A USB barcode scanner that types into focused input fields.
+- A mobile browser supporting `BarcodeDetector` (recent Chrome/Safari).
+
+---
+
+## Quick Start
+
+1. **Create a virtual environment (recommended).**
    ```bash
    python3 -m venv .venv
    source .venv/bin/activate
    ```
-2. Install dependencies:
+2. **Install dependencies.**
    ```bash
    pip install -r requirements.txt
    ```
-3. Create a `.env` file to supply runtime configuration:
+3. **Create a `.env` file.**
    ```bash
    cp .env.example .env
    ```
-   Minimum keys:
+   Adjust the environment variables described below.
+4. **Drop your Google OAuth credentials** into `credentials.json`.
+5. **Run the app.**
+   ```bash
+   python app.py
    ```
-   INGEST_TOKEN=choose-a-long-random-string
-   PORT=5000
-   TASKLIST_ID=  # optional; leave blank to use the first Tasks list
-   TASKLIST_TITLE=Groceries  # optional fallback label used on load
-   SCANNER_IDENTIFIER=  # optional substring used to detect the USB barcode scanner (macOS only)
-   ```
-   - `INGEST_TOKEN` secures the `/scan` endpoint; the mobile UI and manual form must send the same value.
-   - `TASKLIST_ID`/`TASKLIST_TITLE` let you set a default Google Tasks list; you can also switch lists from the dashboard at runtime.
-   - `SCANNER_IDENTIFIER` (optional) helps the dashboard show whether your USB scanner is connected (macOS only). Set it to a distinctive substring from the output of `ioreg -p IOUSB -l` for your scanner.
-4. Place the Google OAuth client JSON as `credentials.json` in the repo root. The first run will launch a browser window so you can authorize the app; it caches tokens in `token.json`.
+   On first launch the server runs the OAuth flow, writes the resulting token to `token.json`, and then listens on `https://0.0.0.0:5000/` by default. Change the `PORT` env var or the `ssl_context` tuple if required.
 
-## Running the server
-```bash
-python app.py
-```
+Once running, visit `https://<host>:<port>/` for the dashboard or scan the `/docs/qrcodes.pdf` QR to open the mobile scanner page.
 
-By default the app listens on `https://0.0.0.0:5000/` with the TLS certificate referenced in `app.py`. Adjust `PORT` and/or the `ssl_context` tuple if you are using different certificates or prefer plain HTTP (only advisable for trusted local networks).
+---
 
-## Using the app
-- Visit `https://<host>:<port>/` for the dashboard. You can type or scan codes into the form; each successful scan appears under “Recent scans”. Use the “Choose list” dropdown (top-right) if you want to switch which Google Tasks list receives new items.
-- Visit `https://<host>:<port>/mobile` on a phone. Enter the `INGEST_TOKEN` once and keep the page open to scan items with the device camera. (Modern Chrome/Safari required; HTTPS is mandatory for camera access.)
-- The `/scan` endpoint also accepts JSON `{"code": "...", "token": "..."}` so you can integrate other scanners or scripts.
-- The `/recent` endpoint returns the latest 200 scans as JSON for debugging.
+## Configuration
 
-## Development tips
-- When changing the Google account or scopes, delete `token.json` to trigger a fresh OAuth flow.
-- If you replace certificates, update the filenames referenced at the bottom of `app.py`.
-- The Open Food Facts lookup is best-effort; if the API call fails, the task will simply use the raw barcode.
+All configuration comes from environment variables (e.g. `.env`). Values marked *optional* have sensible defaults.
+
+| Key | Default | Description |
+| --- | --- | --- |
+| `PORT` | `5000` | Flask server port. |
+| `INGEST_TOKEN` | `changeme` | Shared secret required by the `/scan` endpoint, dashboard form, and mobile UI. Choose a long random string in production. |
+| `TASKLIST_ID` | *(blank)* | Preferred Google Tasks list ID. Leave blank to auto-select (or create) the first list. |
+| `TASKLIST_TITLE` | *(blank)* | Friendly name used on initial dashboard load. Updated automatically when you switch lists. |
+| `SCANNER_IDENTIFIER` | *(blank)* | macOS-only substring used to detect a USB scanner via `ioreg`. Leave blank to disable the status badge. |
+| `SCANNER_STATUS_REFRESH_MS` | `5000` | Dashboard polling interval (in ms) for the scanner status badge. Clamped to ≥1000 ms. |
+
+Environment changes require a server restart.
+
+---
+
+## Using the Application
+
+### Desktop Dashboard (`/`)
+
+- **Manual / USB scans** – Focus the input field, scan a barcode, and it auto-submits. Successful scans clear the field, add a task, and append to “Recent scans”.
+- **Task list picker** – The “Choose list” dropdown is populated from the Google Tasks API. Switch lists any time; the selection is stored in memory and future scans go to that list.
+- **Scanner badge** – When `SCANNER_IDENTIFIER` is configured on macOS, the badge shows *Connected*, *Not detected*, or *Status unavailable* depending on `/scanner-status`.
+- **Recent scans feed** – Shows timestamped log of the last 200 items, including duplicate notices.
+
+### Mobile Scanner (`/mobile`)
+
+- Grants camera access and continuously detects supported barcode formats (`EAN-13`, `EAN-8`, `Code 128`, `Code 39`, `ITF`, `QR`).
+- Remembers the ingest token in `localStorage`.
+- Posts each new barcode (once per session) to `/scan` and displays success/error feedback inline.
+- Requires HTTPS (or `localhost`) because of browser camera policies.
+
+### API Endpoints
+
+| Method | Path | Description |
+| --- | --- | --- |
+| `GET` | `/` | Dashboard UI (USB scanner workflow). |
+| `GET` | `/mobile` | Mobile camera UI. |
+| `GET` | `/recent` | Returns recent scans array `{code, when}` for the dashboard table. |
+| `POST` | `/scan` | Main ingest endpoint. Requires JSON body `{"code": "...", "token": "..."}` or `X-Ingest-Token` header. |
+| `GET` | `/tasklists` | Lists available Google Tasks lists (`id`, `title`) and the currently selected list ID. |
+| `POST` | `/tasklists/select` | Switches the active Google Tasks list. JSON body: `{"tasklist_id": "..."}`. |
+| `GET` | `/scanner-status` | Returns `{connected: bool}` based on the optional USB probe. |
+
+All responses are JSON except for the templated pages. Non-200 responses from `/scan` include an explanatory message that surfaces in the UI banner.
+
+---
+
+## Behavior Details
+
+- **Barcode normalization** – Non-digits are stripped; 12-digit UPC-A codes are zero-padded to 13 digits to align with EAN-13.
+- **Duplicate suppression** – Scans of the same normalized code within 3 seconds are ignored, but still logged with a “dup ignored” marker for operator feedback.
+- **Product enrichment** – The server attempts an Open Food Facts lookup to populate the Google Task title and optional notes (brand, quantity, categories, image). Failures fall back to using the raw code without raising errors.
+- **Google Tasks integration** – Tokens are refreshed automatically when expired. If a task insertion fails (e.g., revoked authorization), the `/scan` endpoint returns an error so the operator can re-authenticate.
+- **Port freeing** – On macOS/Linux the app calls `lsof` to free the configured port before starting, which helps during development restarts.
+
+---
+
+## Development Notes
+
+- Delete `token.json` if you need to re-run the OAuth flow with a different Google account or scopes.
+- Update `ssl_context` in `app.py` if you replace certificates or switch to HTTP in a trusted network.
+- The dashboard JavaScript expects the scanner badge DOM elements; removing them requires corresponding JS adjustments.
+- `docs/qrcodes.pdf` contains QR codes that point to `/mobile` (useful for signage near the pantry).
+- `barcode_favicon.ico` can be served by dropping it into your preferred static file pipeline if you expose favicons.
+
+---
+
+## Troubleshooting
+
+- **“Auth failed” in logs or UI** – Ensure the ingest token in `.env`, the dashboard input, and the mobile token all match exactly.
+- **Tasks no longer appear** – Revoked credentials cause `/scan` to emit an error banner. Delete `token.json` and restart to trigger OAuth; also confirm the selected list still exists.
+- **Scanner badge never shows “connected”** – On macOS, verify `SCANNER_IDENTIFIER` matches a substring from `ioreg -p IOUSB -l`. On other platforms leave it blank to suppress polling.
+- **Mobile camera won’t start** – The device must load the page over HTTPS; use the provided TLS certs or set up your own trusted cert.
+
+With this README you should have all the context necessary to reason about the app’s behavior, extend it, or troubleshoot scanning issues during future sessions.

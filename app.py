@@ -27,6 +27,15 @@ INGEST_TOKEN = os.getenv("INGEST_TOKEN", "changeme")
 TASKLIST_ID = os.getenv("TASKLIST_ID", "").strip()
 TASKLIST_TITLE = os.getenv("TASKLIST_TITLE", "").strip()
 SCANNER_IDENTIFIER = os.getenv("SCANNER_IDENTIFIER", "").strip()
+try:
+    SCANNER_STATUS_REFRESH_MS = int(os.getenv("SCANNER_STATUS_REFRESH_MS", "5000"))
+except ValueError:
+    logger.warning("Invalid SCANNER_STATUS_REFRESH_MS value; defaulting to 5000")
+    SCANNER_STATUS_REFRESH_MS = 5000
+if SCANNER_STATUS_REFRESH_MS <= 0:
+    logger.warning("SCANNER_STATUS_REFRESH_MS must be positive; defaulting to 5000")
+    SCANNER_STATUS_REFRESH_MS = 5000
+_SCANNER_CACHE_TTL = max(1.0, SCANNER_STATUS_REFRESH_MS / 1000.0)
 _SCANNER_CACHE = {"ts": 0.0, "connected": False}
 
 # Tell Flask where the Jinja templates actually live (they're under static/templates).
@@ -74,7 +83,7 @@ def _probe_scanner() -> bool:
 
 def is_scanner_connected() -> bool:
     now = time.time()
-    if now - _SCANNER_CACHE["ts"] < 5:
+    if now - _SCANNER_CACHE["ts"] < _SCANNER_CACHE_TTL:
         return _SCANNER_CACHE["connected"]
     connected = _probe_scanner()
     _SCANNER_CACHE.update({"ts": now, "connected": connected})
@@ -224,6 +233,7 @@ def home():
         "dashboard.html",
         active_list_title=get_tasklist_title(),
         ingest_token=INGEST_TOKEN,
+        scanner_refresh_ms=SCANNER_STATUS_REFRESH_MS,
     )
 
 @app.route("/mobile")

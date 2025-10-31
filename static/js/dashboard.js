@@ -9,6 +9,9 @@ const scannerDot = document.getElementById('scanner-dot');
 const scannerText = document.getElementById('scanner-status-text');
 const tasklistSelect = document.getElementById('tasklist-select');
 const activeListTitle = document.getElementById('active-list-title');
+const rawRefreshMs = document.body && document.body.dataset ? Number(document.body.dataset.scannerRefreshMs) : NaN;
+const scannerRefreshMs = (!Number.isFinite(rawRefreshMs) || rawRefreshMs <= 0) ? 5000 : rawRefreshMs;
+const scannerInterval = Math.max(1000, scannerRefreshMs);
 
 async function refresh() {
   const r = await fetch('/recent');
@@ -17,8 +20,10 @@ async function refresh() {
 }
 setInterval(refresh, 1500);
 refresh();
-setInterval(refreshScanner, 5000);
-refreshScanner();
+if (scannerDot) {
+  refreshScanner();
+  setInterval(refreshScanner, scannerInterval);
+}
 if (tasklistSelect) {
   loadTasklists();
   tasklistSelect.addEventListener('change', onTasklistChange);

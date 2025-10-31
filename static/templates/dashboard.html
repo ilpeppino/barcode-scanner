@@ -2,159 +2,621 @@
 <html>
   <head>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <link
-      rel="icon"
-      href="{{ url_for('static', filename='barcode_favicon.ico') }}"
-    />
-    <title>Barcode → Google Tasks</title>
+    <link rel="icon" href="/static/barcode_favicon.ico" />
+    <title>Barcode Scanner → Google Tasks</title>
     <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
       body {
-        font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;
-        margin: 20px;
+        font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
+          Roboto, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        padding: 20px;
+        color: #2d3748;
       }
-      h1 {
-        margin: 0 0 10px;
+
+      .container {
+        max-width: 1400px;
+        margin: 0 auto;
       }
-      .header-row {
+
+      /* Header */
+      .header {
+        background: white;
+        border-radius: 20px;
+        padding: 24px 32px;
+        margin-bottom: 24px;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
         display: flex;
-        flex-wrap: wrap;
-        align-items: center;
         justify-content: space-between;
-        gap: 16px;
-      }
-      .header-controls {
-        display: flex;
+        align-items: center;
         flex-wrap: wrap;
+        gap: 20px;
+      }
+
+      .header-left h1 {
+        font-size: 28px;
+        font-weight: 700;
+        color: #1a202c;
+        margin-bottom: 4px;
+        display: flex;
         align-items: center;
         gap: 12px;
-        font-size: 0.9em;
       }
-      .row {
+
+      .header-left h1::before {
+        content: "📦";
+        font-size: 32px;
+      }
+
+      .active-list {
+        color: #667eea;
+        font-size: 16px;
+        font-weight: 500;
+      }
+
+      .header-controls {
         display: flex;
-        gap: 1rem;
+        align-items: center;
+        gap: 16px;
         flex-wrap: wrap;
       }
-      .card {
-        border: 1px solid #ddd;
-        border-radius: 12px;
-        padding: 16px;
-        min-width: 280px;
-      }
-      table {
-        border-collapse: collapse;
-        width: 100%;
-      }
-      th,
-      td {
-        border-bottom: 1px solid #eee;
-        padding: 8px;
-        text-align: left;
-      }
-      code {
-        background: #f6f8fa;
-        padding: 2px 4px;
-        border-radius: 6px;
-      }
-      .muted {
-        color: #666;
-        font-size: 0.9em;
-      }
-      input,
-      button {
-        padding: 8px 10px;
-      }
-      #tasklist-select {
-        padding: 6px 10px;
-        border-radius: 8px;
-        border: 1px solid #ccc;
-      }
-      #scanner-dot {
-        display: inline-block;
-        width: 10px;
-        height: 10px;
-        border-radius: 50%;
-        vertical-align: middle;
-        background: #bbb;
-        box-shadow: 0 0 6px rgba(0, 0, 0, 0.1);
-      }
-      #scanner-status-wrap {
-        font-size: 0.9em;
-        color: #555;
-        display: inline-flex;
+
+      .tasklist-selector {
+        display: flex;
         align-items: center;
-        gap: 6px;
+        gap: 10px;
       }
-      #scanner-dot.connected {
-        background: #2da44e;
+
+      .tasklist-selector label {
+        font-size: 14px;
+        color: #718096;
+        font-weight: 500;
       }
-      #scanner-dot.disconnected {
-        background: #d2222d;
+
+      select {
+        padding: 10px 16px;
+        border: 2px solid #e2e8f0;
+        border-radius: 10px;
+        font-size: 14px;
+        font-weight: 500;
+        color: #2d3748;
+        background: white;
+        cursor: pointer;
+        transition: all 0.2s;
+        outline: none;
+      }
+
+      select:hover {
+        border-color: #667eea;
+      }
+
+      select:focus {
+        border-color: #667eea;
+        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+      }
+
+      /* Main Grid */
+      .main-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+        gap: 24px;
+        margin-bottom: 24px;
+      }
+
+      .card {
+        background: white;
+        border-radius: 20px;
+        padding: 28px;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+        transition: transform 0.2s, box-shadow 0.2s;
+      }
+
+      .card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 15px 50px rgba(0, 0, 0, 0.15);
+      }
+
+      .card h3 {
+        font-size: 20px;
+        font-weight: 700;
+        color: #1a202c;
+        margin-bottom: 16px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .card h3::before {
+        content: "";
+        width: 4px;
+        height: 24px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 2px;
+      }
+
+      /* Scanner Form */
+      .scanner-form {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      input[type="text"] {
+        padding: 14px 18px;
+        border: 2px solid #e2e8f0;
+        border-radius: 12px;
+        font-size: 15px;
+        transition: all 0.2s;
+        outline: none;
+        font-family: inherit;
+      }
+
+      input[type="text"]:focus {
+        border-color: #667eea;
+        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+      }
+
+      button {
+        padding: 14px 24px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        border-radius: 12px;
+        font-size: 15px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+      }
+
+      button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+      }
+
+      button:active {
+        transform: translateY(0);
+      }
+
+      .form-hint {
+        font-size: 13px;
+        color: #718096;
+        margin-top: 8px;
+        line-height: 1.5;
+      }
+
+      #msg {
+        margin-top: 16px;
+        padding: 12px 16px;
+        border-radius: 10px;
+        font-size: 14px;
+        font-weight: 500;
+        display: none;
+      }
+
+      #msg.ok {
+        background: #c6f6d5;
+        color: #22543d;
+        display: block;
+        animation: slideIn 0.3s ease-out;
+      }
+
+      #msg.err {
+        background: #fed7d7;
+        color: #742a2a;
+        display: block;
+        animation: slideIn 0.3s ease-out;
+      }
+
+      @keyframes slideIn {
+        from {
+          opacity: 0;
+          transform: translateY(-10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      /* Mobile Card */
+      .mobile-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+      }
+
+      .mobile-card h3 {
+        color: white;
+      }
+
+      .mobile-card h3::before {
+        background: white;
+      }
+
+      .qr-code {
+        display: inline-block;
+        padding: 10px 20px;
+        background: white;
+        color: #667eea;
+        border-radius: 10px;
+        font-weight: 600;
+        text-decoration: none;
+        font-size: 16px;
+        margin-top: 8px;
+        transition: all 0.2s;
+      }
+
+      .qr-code:hover {
+        transform: scale(1.05);
+        box-shadow: 0 5px 20px rgba(0, 0, 0, 0.2);
+      }
+
+      /* Recent Scans Table */
+      .recent-scans {
+        grid-column: 1 / -1;
+      }
+
+      .table-wrapper {
+        overflow-x: auto;
+        margin-top: 16px;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: separate;
+        border-spacing: 0;
+      }
+
+      thead {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      }
+
+      th {
+        padding: 16px;
+        text-align: left;
+        color: white;
+        font-weight: 600;
+        font-size: 14px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+
+      th:first-child {
+        border-radius: 12px 0 0 0;
+      }
+
+      th:last-child {
+        border-radius: 0 12px 0 0;
+      }
+
+      tbody tr {
+        transition: background 0.2s;
+      }
+
+      tbody tr:hover {
+        background: #f7fafc;
+      }
+
+      td {
+        padding: 16px;
+        border-bottom: 1px solid #e2e8f0;
+        font-size: 14px;
+      }
+
+      tbody tr:last-child td {
+        border-bottom: none;
+      }
+
+      tbody tr:last-child td:first-child {
+        border-radius: 0 0 0 12px;
+      }
+
+      tbody tr:last-child td:last-child {
+        border-radius: 0 0 12px 0;
+      }
+
+      .code-cell {
+        font-family: "Monaco", "Courier New", monospace;
+        font-weight: 600;
+        color: #667eea;
+      }
+
+      /* Empty State */
+      .empty-state {
+        text-align: center;
+        padding: 40px 20px;
+        color: #718096;
+      }
+
+      .empty-state::before {
+        content: "📭";
+        font-size: 48px;
+        display: block;
+        margin-bottom: 12px;
+      }
+
+      /* Responsive */
+      @media (max-width: 768px) {
+        .header {
+          padding: 20px;
+        }
+
+        .header-left h1 {
+          font-size: 22px;
+        }
+
+        .main-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .card {
+          padding: 20px;
+        }
+      }
+
+      /* Loading Animation */
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.5;
+        }
+      }
+
+      .loading {
+        animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
       }
     </style>
   </head>
-<body data-scanner-refresh-ms="{{ scanner_refresh_ms }}">
-    <div class="header-row">
-      <h1>
-        Barcode → Google Tasks
-        <span class="muted"
-          >· List:
-          <span id="active-list-title">{{ active_list_title }}</span></span
-        >
-      </h1>
-      <div class="header-controls">
-        <label for="tasklist-select" class="muted">Choose list</label>
-        <select id="tasklist-select"></select>
-        <span id="scanner-status-wrap" title="Scanner status">
-          <span id="scanner-dot" class="disconnected" aria-hidden="true"></span>
-          <span id="scanner-status-text" class="muted">Checking scanner…</span>
-        </span>
+  <body>
+    <div class="container">
+      <!-- Header -->
+      <div class="header">
+        <div class="header-left">
+          <h1>Barcode Scanner</h1>
+          <div class="active-list">
+            Active List: <span id="active-list-title">My Tasks</span>
+          </div>
+        </div>
+        <div class="header-controls">
+          <div class="tasklist-selector">
+            <label for="tasklist-select">Task List</label>
+            <select id="tasklist-select">
+              <option>Loading...</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Main Grid -->
+      <div class="main-grid">
+        <!-- Scanner Input Card -->
+        <div class="card">
+          <h3>Quick Scan</h3>
+          <form id="f" class="scanner-form">
+            <input
+              id="code"
+              type="text"
+              placeholder="Scan barcode or enter manually..."
+              autofocus
+            />
+            <input
+              id="token"
+              type="text"
+              placeholder="Ingest Token"
+              value="changeme"
+            />
+            <button type="submit">Add to Tasks</button>
+            <div class="form-hint">
+              💡 Use your USB scanner here — it types like a keyboard and
+              submits automatically
+            </div>
+          </form>
+          <div id="msg"></div>
+        </div>
+
+        <!-- Mobile Scanner Card -->
+        <div class="card mobile-card">
+          <h3>📱 Mobile Scanner</h3>
+          <p style="margin-bottom: 12px; line-height: 1.6">
+            Scan with your phone's camera for hands-free operation
+          </p>
+          <a href="/mobile" class="qr-code">Open Mobile Scanner →</a>
+          <div
+            class="form-hint"
+            style="margin-top: 16px; color: rgba(255, 255, 255, 0.9)"
+          >
+            Works on phones with camera access over HTTPS
+          </div>
+        </div>
+
+        <!-- Recent Scans Card -->
+        <div class="card recent-scans">
+          <h3>Recent Scans</h3>
+          <div class="table-wrapper">
+            <table id="t">
+              <thead>
+                <tr>
+                  <th>Timestamp</th>
+                  <th>Barcode</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td colspan="2" class="empty-state">
+                    <div>No scans yet. Start scanning to see items here!</div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </div>
 
-    <div class="row">
-      <div class="card">
-        <h3>Quick manual entry (testing)</h3>
-        <form id="f">
-          <input id="code" placeholder="Type or scan here" autofocus />
-          <input
-            id="token"
-            placeholder="INGEST_TOKEN"
-            value="{{ ingest_token }}"
-          />
-          <button>Add</button>
-        </form>
-        <p class="muted">
-          Use your USB scanner here — it types like a keyboard and hits Enter.
-        </p>
-        <div id="msg"></div>
-      </div>
+    <script type="module">
+      window.addEventListener("DOMContentLoaded", () => {
+        const form = document.getElementById("f");
+        const codeInput = document.getElementById("code");
+        const tokenInput = document.getElementById("token");
+        const messageEl = document.getElementById("msg");
+        const tbody = document.querySelector("#t tbody");
+        const tasklistSelect = document.getElementById("tasklist-select");
+        const activeListTitle = document.getElementById("active-list-title");
 
-      <div class="card">
-        <h3>Use phone camera</h3>
-        <p>Open on your phone: <code>/mobile</code></p>
-        <p class="muted">
-          Phone scans code and POSTs here. Set <code>INGEST_TOKEN</code> in
-          .env.
-        </p>
-      </div>
-    </div>
+        async function refreshRecent() {
+          if (!tbody) return;
+          try {
+            const res = await fetch("/recent");
+            const data = await res.json();
+            if (data.length === 0) {
+              tbody.innerHTML =
+                '<tr><td colspan="2" class="empty-state"><div>No scans yet. Start scanning to see items here!</div></td></tr>';
+            } else {
+              tbody.innerHTML = data
+                .map(
+                  (x) =>
+                    `<tr><td>${x.when}</td><td class="code-cell">${x.code}</td></tr>`
+                )
+                .join("");
+            }
+          } catch (err) {
+            console.error("Failed to refresh recent scans", err);
+          }
+        }
 
-    <div class="card" style="margin-top: 1rem">
-      <h3>Recent scans</h3>
-      <table id="t">
-        <thead>
-          <tr>
-            <th>When</th>
-            <th>Code</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
-    </div>
+        async function loadTasklists() {
+          if (!tasklistSelect) return;
+          try {
+            const res = await fetch("/tasklists");
+            const data = await res.json();
+            if (!Array.isArray(data.items)) return;
+            tasklistSelect.innerHTML = "";
+            for (const item of data.items) {
+              const opt = document.createElement("option");
+              opt.value = item.id;
+              opt.textContent = item.title;
+              if (item.id === data.selected) opt.selected = true;
+              tasklistSelect.appendChild(opt);
+            }
+            if (activeListTitle) {
+              const sel = tasklistSelect.options[tasklistSelect.selectedIndex];
+              if (sel) activeListTitle.textContent = sel.textContent;
+            }
+          } catch (err) {
+            console.error("Failed to load tasklists", err);
+          }
+        }
 
-    <script
-      src="{{ url_for('static', filename='js/dashboard.js') }}"
-      type="module"
-    ></script>
+        async function switchTasklist() {
+          if (!tasklistSelect) return;
+          const tasklist_id = tasklistSelect.value;
+          try {
+            const res = await fetch("/tasklists/select", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ tasklist_id }),
+            });
+            const data = await res.json();
+            if (!res.ok || !data.ok) {
+              throw new Error(data.message || "Failed to switch list");
+            }
+            if (activeListTitle) {
+              const sel = tasklistSelect.options[tasklistSelect.selectedIndex];
+              activeListTitle.textContent =
+                data.title || (sel ? sel.textContent : "");
+            }
+            if (messageEl) {
+              messageEl.textContent = `✓ Switched to list: ${
+                activeListTitle ? activeListTitle.textContent : ""
+              }`;
+              messageEl.className = "ok";
+              messageEl.style.display = "block";
+              setTimeout(() => {
+                messageEl.style.display = "none";
+              }, 3000);
+            }
+          } catch (err) {
+            console.error("Unable to switch task list", err);
+            if (messageEl) {
+              messageEl.textContent =
+                "✗ " + (err.message || "Unable to switch list");
+              messageEl.className = "err";
+              messageEl.style.display = "block";
+            }
+            loadTasklists();
+          }
+        }
+
+        async function submitScan(e) {
+          if (e) {
+            e.preventDefault();
+            e.stopPropagation();
+          }
+          if (!codeInput || !tokenInput || !messageEl) return;
+
+          const payload = {
+            code: codeInput.value.trim(),
+            token: tokenInput.value.trim(),
+          };
+          if (!payload.code) {
+            messageEl.textContent = "⚠️ Please scan or type a code first";
+            messageEl.className = "err";
+            messageEl.style.display = "block";
+            return;
+          }
+
+          try {
+            const res = await fetch("/scan", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Ingest-Token": tokenInput.value.trim(),
+              },
+              body: JSON.stringify(payload),
+            });
+            const data = await res.json();
+            messageEl.textContent =
+              (res.ok ? "✓ " : "✗ ") + (data.message || JSON.stringify(data));
+            messageEl.className = res.ok ? "ok" : "err";
+            messageEl.style.display = "block";
+            if (!res.ok) return;
+            codeInput.value = "";
+            codeInput.focus();
+            refreshRecent();
+            setTimeout(() => {
+              messageEl.style.display = "none";
+            }, 3000);
+          } catch (err) {
+            console.error("Failed to submit scan", err);
+            messageEl.textContent =
+              "✗ " + (err.message || "Unable to submit scan");
+            messageEl.className = "err";
+            messageEl.style.display = "block";
+          }
+        }
+
+        // Initial data fetches
+        refreshRecent();
+        setInterval(refreshRecent, 1500);
+
+        if (tasklistSelect) {
+          loadTasklists();
+          tasklistSelect.addEventListener("change", switchTasklist);
+        }
+
+        if (form) {
+          form.addEventListener("submit", submitScan);
+        }
+      });
+    </script>
   </body>
 </html>

@@ -6,14 +6,8 @@ window.addEventListener('DOMContentLoaded', () => {
   const tokenInput = document.getElementById('token');
   const messageEl = document.getElementById('msg');
   const tbody = document.querySelector('#t tbody');
-  const scannerDot = document.getElementById('scanner-dot');
-  const scannerText = document.getElementById('scanner-status-text');
   const tasklistSelect = document.getElementById('tasklist-select');
   const activeListTitle = document.getElementById('active-list-title');
-
-  const rawRefreshMs = document.body && document.body.dataset ? Number(document.body.dataset.scannerRefreshMs) : NaN;
-  const scannerRefreshMs = (!Number.isFinite(rawRefreshMs) || rawRefreshMs <= 0) ? 5000 : rawRefreshMs;
-  const scannerInterval = Math.max(1000, scannerRefreshMs);
 
   async function refreshRecent() {
     if (!tbody) return;
@@ -23,33 +17,6 @@ window.addEventListener('DOMContentLoaded', () => {
       tbody.innerHTML = data.map(x => `<tr><td>${x.when}</td><td>${x.code}</td></tr>`).join('');
     } catch (err) {
       console.error('Failed to refresh recent scans', err);
-    }
-  }
-
-  async function refreshScanner() {
-    if (!scannerDot) return;
-    try {
-      const res = await fetch('/scanner-status');
-      const { connected, enabled, supported, message } = await res.json();
-      const text = message || 'Scanner status unavailable';
-
-      scannerDot.classList.remove('connected', 'disconnected', 'disabled');
-      if (!enabled || !supported || connected === null || typeof connected === 'undefined') {
-        scannerDot.classList.add('disabled');
-      } else if (connected === true) {
-        scannerDot.classList.add('connected');
-      } else {
-        scannerDot.classList.add('disconnected');
-      }
-      scannerDot.title = text;
-      if (scannerText) scannerText.textContent = text;
-    } catch (err) {
-      console.error('Failed to refresh scanner status', err);
-      scannerDot.classList.remove('connected', 'disconnected', 'disabled');
-      scannerDot.classList.add('disabled');
-      const text = 'Scanner status unavailable';
-      scannerDot.title = text;
-      if (scannerText) scannerText.textContent = text;
     }
   }
 
@@ -147,11 +114,6 @@ window.addEventListener('DOMContentLoaded', () => {
   // Initial data fetches.
   refreshRecent();
   setInterval(refreshRecent, 1500);
-
-  if (scannerDot) {
-    refreshScanner();
-    setInterval(refreshScanner, scannerInterval);
-  }
 
   if (tasklistSelect) {
     loadTasklists();

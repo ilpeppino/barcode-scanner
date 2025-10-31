@@ -12,7 +12,6 @@ import re
 import requests
 import signal
 import subprocess
-import platform
 
 import logging
 
@@ -26,17 +25,6 @@ PORT = int(os.getenv("PORT", "5000"))
 INGEST_TOKEN = os.getenv("INGEST_TOKEN", "changeme")
 TASKLIST_ID = os.getenv("TASKLIST_ID", "").strip()
 TASKLIST_TITLE = os.getenv("TASKLIST_TITLE", "").strip()
-SCANNER_IDENTIFIER = os.getenv("SCANNER_IDENTIFIER", "").strip()
-try:
-    SCANNER_STATUS_REFRESH_MS = int(os.getenv("SCANNER_STATUS_REFRESH_MS", "5000"))
-except ValueError:
-    logger.warning("Invalid SCANNER_STATUS_REFRESH_MS value; defaulting to 5000")
-    SCANNER_STATUS_REFRESH_MS = 5000
-if SCANNER_STATUS_REFRESH_MS <= 0:
-    logger.warning("SCANNER_STATUS_REFRESH_MS must be positive; defaulting to 5000")
-    SCANNER_STATUS_REFRESH_MS = 5000
-_SCANNER_CACHE_TTL = max(1.0, SCANNER_STATUS_REFRESH_MS / 1000.0)
-_SCANNER_CACHE = {"ts": 0.0, "connected": False}
 
 # Tell Flask where the Jinja templates actually live (they're under static/templates).
 app = Flask(__name__, template_folder="static/templates", static_folder="static")
@@ -63,31 +51,6 @@ def free_port(port: int):
         except ProcessLookupError:
             continue
 
-
-def _probe_scanner() -> bool:
-    if not SCANNER_IDENTIFIER:
-        return False
-    if platform.system() != "Darwin":
-        return False
-    try:
-        output = subprocess.check_output([
-            "/usr/sbin/ioreg",
-            "-p",
-            "IOUSB",
-            "-l",
-        ], timeout=2).decode("utf-8", errors="ignore")
-    except Exception:
-        return False
-    return SCANNER_IDENTIFIER.lower() in output.lower()
-
-
-def is_scanner_connected() -> bool:
-    now = time.time()
-    if now - _SCANNER_CACHE["ts"] < _SCANNER_CACHE_TTL:
-        return _SCANNER_CACHE["connected"]
-    connected = _probe_scanner()
-    _SCANNER_CACHE.update({"ts": now, "connected": connected})
-    return connected
 
 # ---------- Google Tasks helpers ----------
 def get_creds():
@@ -233,7 +196,6 @@ def home():
         "dashboard.html",
         active_list_title=get_tasklist_title(),
         ingest_token=INGEST_TOKEN,
-        scanner_refresh_ms=SCANNER_STATUS_REFRESH_MS,
     )
 
 @app.route("/mobile")
@@ -282,11 +244,6 @@ def select_tasklist():
     TASKLIST_TITLE = tl.get("title", TASKLIST_TITLE)
     logger.info("Tasklist selected: %s (%s)", TASKLIST_TITLE, TASKLIST_ID)
     return jsonify({"ok": True, "title": TASKLIST_TITLE, "tasklist_id": TASKLIST_ID})
-
-
-@app.route("/scanner-status")
-def scanner_status():
-    return jsonify({"connected": is_scanner_connected()})
 
 @app.route("/scan", methods=["POST"])
 def scan():

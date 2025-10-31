@@ -12,7 +12,9 @@ const v = document.getElementById('v');
 const status = document.getElementById('status');
 
 // Remember the token so you type it once
-tokenInput.value = localStorage.getItem('ingestToken') || '';
+if (!tokenInput.value) {
+  tokenInput.value = localStorage.getItem('ingestToken') || '';
+}
 tokenInput.addEventListener('change', () => localStorage.setItem('ingestToken', tokenInput.value.trim()));
 
 async function start() {

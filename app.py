@@ -169,12 +169,20 @@ def log_scan(code):
 @app.route("/")
 def home():
     # Render dashboard.html with the active task list name
-    return render_template("dashboard.html", active_list_title=get_tasklist_title())
+    return render_template(
+        "dashboard.html",
+        active_list_title=get_tasklist_title(),
+        ingest_token=INGEST_TOKEN,
+    )
 
 @app.route("/mobile")
 def mobile():
     # Render mobile.html with the same variable
-    return render_template("mobile.html", active_list_title=get_tasklist_title())
+    return render_template(
+        "mobile.html",
+        active_list_title=get_tasklist_title(),
+        ingest_token=INGEST_TOKEN,
+    )
 
 @app.route("/recent")
 def recent():

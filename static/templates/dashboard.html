@@ -175,6 +175,28 @@
         box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
       }
 
+      .clear-button {
+        padding: 10px 18px;
+        border-radius: 10px;
+        border: 2px solid rgba(102, 126, 234, 0.3);
+        background: rgba(255, 255, 255, 0.8);
+        color: #4c51bf;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+        box-shadow: none;
+      }
+
+      .clear-button:hover {
+        border-color: #667eea;
+        background: white;
+        transform: translateY(-1px);
+      }
+
+      .clear-button:active {
+        transform: translateY(0);
+      }
+
       button:hover {
         transform: translateY(-2px);
         box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
@@ -440,18 +462,27 @@
 
         <!-- Recent Scans Card -->
         <div class="card recent-scans">
-          <h3>Recent Scans</h3>
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+            <h3 style="margin-bottom:0;">Recent Scans</h3>
+            <button id="clear-recent-btn" class="clear-button" type="button">
+              Clear list
+            </button>
+          </div>
+          <p style="color:#718096; font-size:14px; margin-top:12px;">
+            Latest activity from this session
+          </p>
           <div class="table-wrapper">
             <table id="t">
               <thead>
                 <tr>
                   <th>Timestamp</th>
+                  <th>Product</th>
                   <th>Barcode</th>
                 </tr>
               </thead>
               <tbody>
                 <tr>
-                  <td colspan="2" class="empty-state">
+                  <td colspan="3" class="empty-state">
                     <div>No scans yet. Start scanning to see items here!</div>
                   </td>
                 </tr>
@@ -470,6 +501,7 @@
         const messageEl = document.getElementById("msg");
         const tbody = document.querySelector("#t tbody");
         const tasklistSelect = document.getElementById("tasklist-select");
+        const clearButton = document.getElementById("clear-recent-btn");
         const activeListTitle = document.getElementById("active-list-title");
 
         async function refreshRecent() {
@@ -479,12 +511,12 @@
             const data = await res.json();
             if (data.length === 0) {
               tbody.innerHTML =
-                '<tr><td colspan="2" class="empty-state"><div>No scans yet. Start scanning to see items here!</div></td></tr>';
+                '<tr><td colspan="3" class="empty-state"><div>No scans yet. Start scanning to see items here!</div></td></tr>';
             } else {
               tbody.innerHTML = data
                 .map(
                   (x) =>
-                    `<tr><td>${x.when}</td><td class="code-cell">${x.code}</td></tr>`
+                    `<tr><td>${x.when}</td><td>${x.title || "—"}</td><td class="code-cell">${x.code}</td></tr>`
                 )
                 .join("");
             }
@@ -611,6 +643,38 @@
         if (tasklistSelect) {
           loadTasklists();
           tasklistSelect.addEventListener("change", switchTasklist);
+        }
+
+        if (codeInput) {
+          codeInput.focus();
+        }
+
+        if (clearButton) {
+          clearButton.addEventListener("click", async () => {
+            try {
+              const res = await fetch("/recent/clear", { method: "POST" });
+              if (!res.ok) throw new Error("Request failed");
+              const data = await res.json();
+              if (!data.ok) throw new Error("Unable to clear list");
+              refreshRecent();
+              if (messageEl) {
+                messageEl.textContent = "✓ Recent list cleared";
+                messageEl.className = "ok";
+                messageEl.style.display = "block";
+                setTimeout(() => {
+                  messageEl.style.display = "none";
+                }, 3000);
+              }
+            } catch (err) {
+              console.error("Failed to clear recent list", err);
+              if (messageEl) {
+                messageEl.textContent =
+                  "✗ " + (err.message || "Failed to clear list");
+                messageEl.className = "err";
+                messageEl.style.display = "block";
+              }
+            }
+          });
         }
 
         if (form) {

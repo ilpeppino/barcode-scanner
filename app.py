@@ -181,8 +181,15 @@ def lookup_product_title_notes(code: str):
 RECENT = []  # list of dicts {code, when}
 
 
-def log_scan(code):
-    RECENT.insert(0, {"code": code, "when": datetime.now().strftime("%Y-%m-%d %H:%M:%S")})
+def log_scan(code, title=None):
+    RECENT.insert(
+        0,
+        {
+            "code": code,
+            "title": title or "",
+            "when": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        },
+    )
     del RECENT[200:]  # keep last 200
 
 
@@ -262,7 +269,7 @@ def scan():
     code = normalize_barcode(raw)
     if is_recent_duplicate(code):
         logger.info("Duplicate detected for code %s - ignoring", code)
-        log_scan(code + " (dup ignored)")
+        log_scan(code + " (dup ignored)", title="Duplicate ignored")
         return jsonify({"ok": True, "message": f"Ignored duplicate: {code}"}), 200
 
     title, notes = lookup_product_title_notes(code)
@@ -281,8 +288,15 @@ def scan():
             500,
         )
     logger.info("Task created successfully for %s", code)
-    log_scan(code)
+    log_scan(code, title=title)
     return jsonify({"ok": True, "message": f"Added task: {title}"}), 200
+
+
+@app.route("/recent/clear", methods=["POST"])
+def clear_recent():
+    RECENT.clear()
+    LAST_SEEN.clear()
+    return jsonify({"ok": True})
 
 if __name__ == "__main__":
     # Only reclaim the port on the initial run; the reloader child shouldn't kill itself.

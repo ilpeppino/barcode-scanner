@@ -1,50 +1,160 @@
-<!doctype html>
+<!DOCTYPE html>
 <html>
-<head>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>Barcode → Google Tasks</title>
-  <style>
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; margin: 20px; }
-    h1 { margin: 0 0 10px; }
-    .row { display: flex; gap: 1rem; flex-wrap: wrap; }
-    .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; min-width: 280px; }
-    table { border-collapse: collapse; width: 100%; }
-    th, td { border-bottom: 1px solid #eee; padding: 8px; text-align: left; }
-    code { background: #f6f8fa; padding: 2px 4px; border-radius: 6px; }
-    .muted { color: #666; font-size: 0.9em; }
-    input, button { padding: 8px 10px; }
-  </style>
-</head>
-<body>
-  <h1>Barcode → Google Tasks <span class="muted">· List: {{ active_list_title }}</span></h1>
-
-  <div class="row">
-    <div class="card">
-      <h3>Quick manual entry (testing)</h3>
-      <form id="f">
-        <input id="code" placeholder="Type or scan here" autofocus />
-        <input id="token" placeholder="INGEST_TOKEN" value="{{ ingest_token }}" />
-        <button>Add</button>
-      </form>
-      <p class="muted">Use your USB scanner here — it types like a keyboard and hits Enter.</p>
-      <div id="msg"></div>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link
+      rel="icon"
+      href="{{ url_for('static', filename='barcode_favicon.ico') }}"
+    />
+    <title>Barcode → Google Tasks</title>
+    <style>
+      body {
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;
+        margin: 20px;
+      }
+      h1 {
+        margin: 0 0 10px;
+      }
+      .header-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+      }
+      .header-controls {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 12px;
+        font-size: 0.9em;
+      }
+      .row {
+        display: flex;
+        gap: 1rem;
+        flex-wrap: wrap;
+      }
+      .card {
+        border: 1px solid #ddd;
+        border-radius: 12px;
+        padding: 16px;
+        min-width: 280px;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+      }
+      th,
+      td {
+        border-bottom: 1px solid #eee;
+        padding: 8px;
+        text-align: left;
+      }
+      code {
+        background: #f6f8fa;
+        padding: 2px 4px;
+        border-radius: 6px;
+      }
+      .muted {
+        color: #666;
+        font-size: 0.9em;
+      }
+      input,
+      button {
+        padding: 8px 10px;
+      }
+      #tasklist-select {
+        padding: 6px 10px;
+        border-radius: 8px;
+        border: 1px solid #ccc;
+      }
+      #scanner-dot {
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        vertical-align: middle;
+        background: #bbb;
+        box-shadow: 0 0 6px rgba(0, 0, 0, 0.1);
+      }
+      #scanner-status-wrap {
+        font-size: 0.9em;
+        color: #555;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      #scanner-dot.connected {
+        background: #2da44e;
+      }
+      #scanner-dot.disconnected {
+        background: #d2222d;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="header-row">
+      <h1>
+        Barcode → Google Tasks
+        <span class="muted"
+          >· List:
+          <span id="active-list-title">{{ active_list_title }}</span></span
+        >
+      </h1>
+      <div class="header-controls">
+        <label for="tasklist-select" class="muted">Choose list</label>
+        <select id="tasklist-select"></select>
+        <span id="scanner-status-wrap" title="Scanner status">
+          <span id="scanner-dot" class="disconnected" aria-hidden="true"></span>
+          <span id="scanner-status-text" class="muted">Checking scanner…</span>
+        </span>
+      </div>
     </div>
 
-    <div class="card">
-      <h3>Use phone camera</h3>
-      <p>Open on your phone: <code>/mobile</code></p>
-      <p class="muted">Phone scans code and POSTs here. Set <code>INGEST_TOKEN</code> in .env.</p>
+    <div class="row">
+      <div class="card">
+        <h3>Quick manual entry (testing)</h3>
+        <form id="f">
+          <input id="code" placeholder="Type or scan here" autofocus />
+          <input
+            id="token"
+            placeholder="INGEST_TOKEN"
+            value="{{ ingest_token }}"
+          />
+          <button>Add</button>
+        </form>
+        <p class="muted">
+          Use your USB scanner here — it types like a keyboard and hits Enter.
+        </p>
+        <div id="msg"></div>
+      </div>
+
+      <div class="card">
+        <h3>Use phone camera</h3>
+        <p>Open on your phone: <code>/mobile</code></p>
+        <p class="muted">
+          Phone scans code and POSTs here. Set <code>INGEST_TOKEN</code> in
+          .env.
+        </p>
+      </div>
     </div>
-  </div>
 
-  <div class="card" style="margin-top:1rem;">
-    <h3>Recent scans</h3>
-    <table id="t">
-      <thead><tr><th>When</th><th>Code</th></tr></thead>
-      <tbody></tbody>
-    </table>
-  </div>
+    <div class="card" style="margin-top: 1rem">
+      <h3>Recent scans</h3>
+      <table id="t">
+        <thead>
+          <tr>
+            <th>When</th>
+            <th>Code</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
 
-  <script src="{{ url_for('static', filename='js/dashboard.js') }}" type="module"></script>
-</body>
+    <script
+      src="{{ url_for('static', filename='js/dashboard.js') }}"
+      type="module"
+    ></script>
+  </body>
 </html>

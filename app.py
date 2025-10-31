@@ -5,12 +5,14 @@ from dotenv import load_dotenv
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
+from google.auth.transport.requests import Request
 
 import time
 import re
 import requests
 import signal
 import subprocess
+import platform
 
 import logging
 
@@ -24,6 +26,8 @@ PORT = int(os.getenv("PORT", "5000"))
 INGEST_TOKEN = os.getenv("INGEST_TOKEN", "changeme")
 TASKLIST_ID = os.getenv("TASKLIST_ID", "").strip()
 TASKLIST_TITLE = os.getenv("TASKLIST_TITLE", "").strip()
+SCANNER_IDENTIFIER = os.getenv("SCANNER_IDENTIFIER", "").strip()
+_SCANNER_CACHE = {"ts": 0.0, "connected": False}
 
 # Tell Flask where the Jinja templates actually live (they're under static/templates).
 app = Flask(__name__, template_folder="static/templates", static_folder="static")
@@ -50,12 +54,48 @@ def free_port(port: int):
         except ProcessLookupError:
             continue
 
+
+def _probe_scanner() -> bool:
+    if not SCANNER_IDENTIFIER:
+        return False
+    if platform.system() != "Darwin":
+        return False
+    try:
+        output = subprocess.check_output([
+            "/usr/sbin/ioreg",
+            "-p",
+            "IOUSB",
+            "-l",
+        ], timeout=2).decode("utf-8", errors="ignore")
+    except Exception:
+        return False
+    return SCANNER_IDENTIFIER.lower() in output.lower()
+
+
+def is_scanner_connected() -> bool:
+    now = time.time()
+    if now - _SCANNER_CACHE["ts"] < 5:
+        return _SCANNER_CACHE["connected"]
+    connected = _probe_scanner()
+    _SCANNER_CACHE.update({"ts": now, "connected": connected})
+    return connected
+
 # ---------- Google Tasks helpers ----------
 def get_creds():
     if os.path.exists("token.json"):
         creds = Credentials.from_authorized_user_file("token.json", SCOPES)
-        if creds and creds.valid:
-            return creds
+        if creds:
+            if creds.valid:
+                return creds
+            if creds.expired and creds.refresh_token:
+                try:
+                    creds.refresh(Request())
+                    with open("token.json", "w") as f:
+                        f.write(creds.to_json())
+                    logger.info("Refreshed stored Google OAuth token")
+                    return creds
+                except Exception:
+                    logger.exception("Failed to refresh Google OAuth token; falling back to full flow")
     # Run OAuth flow if no valid token found
     flow = InstalledAppFlow.from_client_secrets_file("credentials.json", SCOPES)
     creds = flow.run_local_server(port=0)
@@ -79,6 +119,15 @@ def get_tasklist_title():
         return TASKLIST_TITLE or "Tasks"
 
 
+def list_tasklists():
+    service = get_tasks_service()
+    result = service.tasklists().list(maxResults=100).execute() or {}
+    items = result.get("items", [])
+    # ensure we have a default selection cached
+    ensure_tasklist_id(service)
+    return items
+
+
 def ensure_tasklist_id(service):
     global TASKLIST_ID
     if TASKLIST_ID:
@@ -98,7 +147,9 @@ def create_task(title, notes=None):
     body = {"title": title}
     if notes:
         body["notes"] = notes
-    return service.tasks().insert(tasklist=tl_id, body=body).execute()
+    created = service.tasks().insert(tasklist=tl_id, body=body).execute()
+    logger.info("Created task %s on list %s", created.get("id"), tl_id)
+    return created
 
 
 # ---------- Barcode normalization, dedupe, and product lookup ----------
@@ -188,6 +239,45 @@ def mobile():
 def recent():
     return jsonify(RECENT)
 
+
+@app.route("/tasklists")
+def tasklists():
+    try:
+        items = list_tasklists()
+        return jsonify(
+            {
+                "items": [{"id": i.get("id"), "title": i.get("title") or "Untitled"} for i in items],
+                "selected": TASKLIST_ID,
+            }
+        )
+    except Exception as exc:
+        logger.exception("Failed to list tasklists")
+        return jsonify({"items": [], "selected": TASKLIST_ID, "error": str(exc)}), 500
+
+
+@app.route("/tasklists/select", methods=["POST"])
+def select_tasklist():
+    data = request.get_json(silent=True) or {}
+    tasklist_id = (data.get("tasklist_id") or "").strip()
+    if not tasklist_id:
+        return jsonify({"ok": False, "message": "tasklist_id required"}), 400
+    try:
+        service = get_tasks_service()
+        tl = service.tasklists().get(tasklist=tasklist_id).execute()
+    except Exception as exc:
+        logger.exception("Failed to fetch tasklist %s", tasklist_id)
+        return jsonify({"ok": False, "message": "Unable to select task list"}), 400
+    global TASKLIST_ID, TASKLIST_TITLE
+    TASKLIST_ID = tasklist_id
+    TASKLIST_TITLE = tl.get("title", TASKLIST_TITLE)
+    logger.info("Tasklist selected: %s (%s)", TASKLIST_TITLE, TASKLIST_ID)
+    return jsonify({"ok": True, "title": TASKLIST_TITLE, "tasklist_id": TASKLIST_ID})
+
+
+@app.route("/scanner-status")
+def scanner_status():
+    return jsonify({"connected": is_scanner_connected()})
+
 @app.route("/scan", methods=["POST"])
 def scan():
     data = request.get_json(silent=True) or {}
@@ -210,7 +300,19 @@ def scan():
 
     title, notes = lookup_product_title_notes(code)
     logger.info("Creating task for code %s with title '%s'", code, title)
-    create_task(title=title, notes=notes)
+    try:
+        create_task(title=title, notes=notes)
+    except Exception as exc:
+        logger.exception("Failed to create task for code %s", code)
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "message": "Failed to create Google Task. Check server logs and re-authenticate if needed.",
+                }
+            ),
+            500,
+        )
     logger.info("Task created successfully for %s", code)
     log_scan(code)
     return jsonify({"ok": True, "message": f"Added task: {title}"}), 200

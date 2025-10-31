@@ -26,17 +26,19 @@ A small Flask app that receives barcode scans, de-duplicates them, looks up frie
    ```
 3. Create a `.env` file to supply runtime configuration:
    ```bash
-   cp .env.example .env  # if you have one, otherwise create manually
+   cp .env.example .env
    ```
    Minimum keys:
    ```
    INGEST_TOKEN=choose-a-long-random-string
    PORT=5000
    TASKLIST_ID=  # optional; leave blank to use the first Tasks list
-   TASKLIST_TITLE=Groceries  # optional label used on the UI
+   TASKLIST_TITLE=Groceries  # optional fallback label used on load
+   SCANNER_IDENTIFIER=  # optional substring used to detect the USB barcode scanner (macOS only)
    ```
    - `INGEST_TOKEN` secures the `/scan` endpoint; the mobile UI and manual form must send the same value.
-   - `TASKLIST_ID` is optional; the app will create or reuse the first task list if left blank.
+   - `TASKLIST_ID`/`TASKLIST_TITLE` let you set a default Google Tasks list; you can also switch lists from the dashboard at runtime.
+   - `SCANNER_IDENTIFIER` (optional) helps the dashboard show whether your USB scanner is connected (macOS only). Set it to a distinctive substring from the output of `ioreg -p IOUSB -l` for your scanner.
 4. Place the Google OAuth client JSON as `credentials.json` in the repo root. The first run will launch a browser window so you can authorize the app; it caches tokens in `token.json`.
 
 ## Running the server
@@ -47,7 +49,7 @@ python app.py
 By default the app listens on `https://0.0.0.0:5000/` with the TLS certificate referenced in `app.py`. Adjust `PORT` and/or the `ssl_context` tuple if you are using different certificates or prefer plain HTTP (only advisable for trusted local networks).
 
 ## Using the app
-- Visit `https://<host>:<port>/` for the dashboard. You can type or scan codes into the form; each successful scan appears under “Recent scans”.
+- Visit `https://<host>:<port>/` for the dashboard. You can type or scan codes into the form; each successful scan appears under “Recent scans”. Use the “Choose list” dropdown (top-right) if you want to switch which Google Tasks list receives new items.
 - Visit `https://<host>:<port>/mobile` on a phone. Enter the `INGEST_TOKEN` once and keep the page open to scan items with the device camera. (Modern Chrome/Safari required; HTTPS is mandatory for camera access.)
 - The `/scan` endpoint also accepts JSON `{"code": "...", "token": "..."}` so you can integrate other scanners or scripts.
 - The `/recent` endpoint returns the latest 200 scans as JSON for debugging.

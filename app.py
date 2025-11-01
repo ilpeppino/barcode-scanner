@@ -205,15 +205,6 @@ def home():
         ingest_token=INGEST_TOKEN,
     )
 
-@app.route("/mobile")
-def mobile():
-    # Render mobile.html with the same variable
-    return render_template(
-        "mobile.html",
-        active_list_title=get_tasklist_title(),
-        ingest_token=INGEST_TOKEN,
-    )
-
 @app.route("/recent")
 def recent():
     return jsonify(RECENT)
@@ -258,7 +249,11 @@ def scan():
     # Accept token from JSON body, header, or query param for convenience
     token = data.get("token") or request.headers.get("X-Ingest-Token") or request.args.get("token")
     if token != INGEST_TOKEN:
-        logger.info("Auth failed from %s: provided token len=%s (expected non-empty). Hint: set INGEST_TOKEN in .env and enter same on /mobile.", request.remote_addr, len(token) if token else 0)
+        logger.info(
+            "Auth failed from %s: provided token len=%s (expected non-empty). Hint: set INGEST_TOKEN in .env and enter the same value on the dashboard.",
+            request.remote_addr,
+            len(token) if token else 0,
+        )
         abort(401)
 
     raw = (data.get("code") or "").strip()

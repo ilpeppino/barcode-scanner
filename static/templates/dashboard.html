@@ -197,6 +197,47 @@
         transform: translateY(0);
       }
 
+      .camera-card button {
+        margin-top: 12px;
+      }
+
+      .camera-card button.active {
+        background: linear-gradient(135deg, #f56565 0%, #c53030 100%);
+      }
+
+      .camera-video {
+        margin-top: 16px;
+        width: 100%;
+        max-height: 320px;
+        border-radius: 16px;
+        background: #1a202c;
+        display: block;
+        object-fit: cover;
+      }
+
+      .camera-video.hidden {
+        display: none;
+      }
+
+      .camera-status {
+        margin-top: 12px;
+        font-size: 14px;
+        color: #4a5568;
+        min-height: 1.2em;
+      }
+
+      .camera-status.ok {
+        color: #22543d;
+      }
+
+      .camera-status.err {
+        color: #742a2a;
+      }
+
+      .camera-status.info {
+        color: #4a5568;
+      }
+
       button:hover {
         transform: translateY(-2px);
         box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
@@ -245,38 +286,6 @@
           opacity: 1;
           transform: translateY(0);
         }
-      }
-
-      /* Mobile Card */
-      .mobile-card {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-      }
-
-      .mobile-card h3 {
-        color: white;
-      }
-
-      .mobile-card h3::before {
-        background: white;
-      }
-
-      .qr-code {
-        display: inline-block;
-        padding: 10px 20px;
-        background: white;
-        color: #667eea;
-        border-radius: 10px;
-        font-weight: 600;
-        text-decoration: none;
-        font-size: 16px;
-        margin-top: 8px;
-        transition: all 0.2s;
-      }
-
-      .qr-code:hover {
-        transform: scale(1.05);
-        box-shadow: 0 5px 20px rgba(0, 0, 0, 0.2);
       }
 
       /* Recent Scans Table */
@@ -445,18 +454,21 @@
           <div id="msg"></div>
         </div>
 
-        <!-- Mobile Scanner Card -->
-        <div class="card mobile-card">
-          <h3>📱 Mobile Scanner</h3>
+        <div class="card camera-card">
+          <h3>📷 Camera Scanner</h3>
           <p style="margin-bottom: 12px; line-height: 1.6">
-            Scan with your phone's camera for hands-free operation
+            Use your device camera to scan barcodes when a USB scanner isn't
+            handy.
           </p>
-          <a href="/mobile" class="qr-code">Open Mobile Scanner →</a>
-          <div
-            class="form-hint"
-            style="margin-top: 16px; color: rgba(255, 255, 255, 0.9)"
-          >
-            Works on phones with camera access over HTTPS
+          <button type="button" id="camera-toggle">Start camera</button>
+          <video
+            id="camera-stream"
+            class="camera-video hidden"
+            playsinline
+            muted
+          ></video>
+          <div id="camera-status" class="camera-status info">
+            Camera idle. Tap “Start camera” to begin.
           </div>
         </div>
 
@@ -503,6 +515,46 @@
         const tasklistSelect = document.getElementById("tasklist-select");
         const clearButton = document.getElementById("clear-recent-btn");
         const activeListTitle = document.getElementById("active-list-title");
+        const cameraToggle = document.getElementById("camera-toggle");
+        const cameraStatus = document.getElementById("camera-status");
+        const cameraVideo = document.getElementById("camera-stream");
+
+        let cameraRunning = false;
+        let cameraStream = null;
+        let cameraDetector = null;
+        let cameraFrameId = null;
+        const cameraSeen = new Set();
+        const BARCODE_FORMATS = [
+          "ean_13",
+          "ean_8",
+          "code_128",
+          "code_39",
+          "itf",
+          "qr_code",
+        ];
+
+        function displayStatus(el, state, text) {
+          if (!el) return;
+          if (el === messageEl) {
+            const cls = state === "ok" ? "ok" : "err";
+            el.textContent = text;
+            el.className = cls;
+            el.style.display = "block";
+            if (cls === "ok") {
+              setTimeout(() => {
+                if (el.className === "ok") {
+                  el.style.display = "none";
+                }
+              }, 3000);
+            }
+            return;
+          }
+          el.textContent = text;
+          el.classList.remove("ok", "err", "info");
+          if (state) {
+            el.classList.add(state);
+          }
+        }
 
         async function refreshRecent() {
           if (!tbody) return;
@@ -567,24 +619,71 @@
                 data.title || (sel ? sel.textContent : "");
             }
             if (messageEl) {
-              messageEl.textContent = `✓ Switched to list: ${
-                activeListTitle ? activeListTitle.textContent : ""
-              }`;
-              messageEl.className = "ok";
-              messageEl.style.display = "block";
-              setTimeout(() => {
-                messageEl.style.display = "none";
-              }, 3000);
+              displayStatus(
+                messageEl,
+                "ok",
+                `✓ Switched to list: ${
+                  activeListTitle ? activeListTitle.textContent : ""
+                }`
+              );
             }
           } catch (err) {
             console.error("Unable to switch task list", err);
             if (messageEl) {
-              messageEl.textContent =
-                "✗ " + (err.message || "Unable to switch list");
-              messageEl.className = "err";
-              messageEl.style.display = "block";
+              displayStatus(
+                messageEl,
+                "err",
+                "✗ " + (err.message || "Unable to switch list")
+              );
             }
             loadTasklists();
+          }
+        }
+
+        async function postScan(code, statusEl, options = {}) {
+          const target = statusEl || messageEl;
+          if (!target) return false;
+          const token = tokenInput ? tokenInput.value.trim() : "";
+          if (!token) {
+            displayStatus(
+              target,
+              "err",
+              "✗ Enter the ingest token before scanning."
+            );
+            return false;
+          }
+          try {
+            const res = await fetch("/scan", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Ingest-Token": token,
+              },
+              body: JSON.stringify({ code, token }),
+            });
+            const data = await res.json();
+            const ok = res.ok;
+            const prefix = ok ? "✓ " : "✗ ";
+            displayStatus(
+              target,
+              ok ? "ok" : "err",
+              prefix + (data.message || JSON.stringify(data))
+            );
+            if (ok) {
+              refreshRecent();
+              if (typeof options.onSuccess === "function") {
+                options.onSuccess();
+              }
+            }
+            return ok;
+          } catch (err) {
+            console.error("Failed to submit scan", err);
+            displayStatus(
+              target,
+              "err",
+              "✗ " + (err.message || "Unable to submit scan")
+            );
+            return false;
           }
         }
 
@@ -593,46 +692,169 @@
             e.preventDefault();
             e.stopPropagation();
           }
-          if (!codeInput || !tokenInput || !messageEl) return;
-
-          const payload = {
-            code: codeInput.value.trim(),
-            token: tokenInput.value.trim(),
-          };
-          if (!payload.code) {
-            messageEl.textContent = "⚠️ Please scan or type a code first";
-            messageEl.className = "err";
-            messageEl.style.display = "block";
+          if (!codeInput || !messageEl) return;
+          const code = codeInput.value.trim();
+          if (!code) {
+            displayStatus(
+              messageEl,
+              "err",
+              "⚠️ Please scan or type a code first"
+            );
             return;
           }
-
-          try {
-            const res = await fetch("/scan", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "X-Ingest-Token": tokenInput.value.trim(),
-              },
-              body: JSON.stringify(payload),
-            });
-            const data = await res.json();
-            messageEl.textContent =
-              (res.ok ? "✓ " : "✗ ") + (data.message || JSON.stringify(data));
-            messageEl.className = res.ok ? "ok" : "err";
-            messageEl.style.display = "block";
-            if (!res.ok) return;
+          const ok = await postScan(code, messageEl);
+          if (ok) {
             codeInput.value = "";
             codeInput.focus();
-            refreshRecent();
-            setTimeout(() => {
-              messageEl.style.display = "none";
-            }, 3000);
+          }
+        }
+
+        function hasSecureCameraOrigin() {
+          if (window.isSecureContext) return true;
+          return ["localhost", "127.0.0.1"].includes(window.location.hostname);
+        }
+
+        async function startCamera() {
+          if (cameraRunning || !cameraToggle) return;
+          if (!cameraStatus || !cameraVideo) return;
+          if (
+            !navigator.mediaDevices ||
+            typeof navigator.mediaDevices.getUserMedia !== "function"
+          ) {
+            displayStatus(
+              cameraStatus,
+              "err",
+              "Camera API unavailable in this browser."
+            );
+            return;
+          }
+          if (!hasSecureCameraOrigin()) {
+            displayStatus(
+              cameraStatus,
+              "err",
+              "Camera access requires HTTPS or localhost."
+            );
+            return;
+          }
+          if (!("BarcodeDetector" in window)) {
+            displayStatus(
+              cameraStatus,
+              "err",
+              "BarcodeDetector API not supported. Use a modern Chrome or Safari."
+            );
+            return;
+          }
+          cameraToggle.disabled = true;
+          try {
+            if (!cameraDetector) {
+              cameraDetector = new BarcodeDetector({ formats: BARCODE_FORMATS });
+            }
+            cameraStream = await navigator.mediaDevices.getUserMedia({
+              video: { facingMode: "environment" },
+            });
+            cameraVideo.srcObject = cameraStream;
+            cameraVideo.classList.remove("hidden");
+            cameraSeen.clear();
+            try {
+              await cameraVideo.play();
+            } catch (err) {
+              console.warn("Camera playback warning", err);
+            }
+            cameraRunning = true;
+            cameraToggle.textContent = "Stop camera";
+            cameraToggle.classList.add("active");
+            displayStatus(
+              cameraStatus,
+              "info",
+              "Camera active. Scan a barcode to send it."
+            );
+            cameraFrameId = requestAnimationFrame(scanFrame);
           } catch (err) {
-            console.error("Failed to submit scan", err);
-            messageEl.textContent =
-              "✗ " + (err.message || "Unable to submit scan");
-            messageEl.className = "err";
-            messageEl.style.display = "block";
+            console.error("Failed to start camera", err);
+            displayStatus(
+              cameraStatus,
+              "err",
+              err.message || "Unable to access camera."
+            );
+            if (cameraStream) {
+              cameraStream.getTracks().forEach((track) => track.stop());
+              cameraStream = null;
+            }
+            cameraRunning = false;
+            cameraSeen.clear();
+            if (cameraVideo) {
+              cameraVideo.pause();
+              cameraVideo.srcObject = null;
+              cameraVideo.classList.add("hidden");
+            }
+            if (cameraToggle) {
+              cameraToggle.textContent = "Start camera";
+              cameraToggle.classList.remove("active");
+            }
+          } finally {
+            cameraToggle.disabled = false;
+          }
+        }
+
+        function stopCamera() {
+          if (cameraFrameId) {
+            cancelAnimationFrame(cameraFrameId);
+            cameraFrameId = null;
+          }
+          if (cameraStream) {
+            cameraStream.getTracks().forEach((track) => track.stop());
+            cameraStream = null;
+          }
+          cameraSeen.clear();
+          if (cameraVideo) {
+            cameraVideo.pause();
+            cameraVideo.srcObject = null;
+            cameraVideo.classList.add("hidden");
+          }
+          if (cameraToggle) {
+            cameraToggle.textContent = "Start camera";
+            cameraToggle.classList.remove("active");
+          }
+          if (cameraStatus) {
+            displayStatus(cameraStatus, "info", "Camera stopped.");
+          }
+          cameraRunning = false;
+        }
+
+        async function scanFrame() {
+          if (!cameraRunning || !cameraDetector) return;
+          try {
+            const barcodes = await cameraDetector.detect(cameraVideo);
+            for (const barcode of barcodes) {
+              const code = (barcode.rawValue || "").trim();
+              if (!code || cameraSeen.has(code)) continue;
+              cameraSeen.add(code);
+              const ok = await postScan(code, cameraStatus, {
+                onSuccess: () => {
+                  if (cameraRunning) {
+                    setTimeout(() => {
+                      if (cameraRunning) {
+                        displayStatus(
+                          cameraStatus,
+                          "info",
+                          "Camera active. Ready for the next barcode."
+                        );
+                      }
+                    }, 2500);
+                  }
+                },
+              });
+              if (!ok) {
+                cameraSeen.delete(code);
+              } else {
+                setTimeout(() => cameraSeen.delete(code), 5000);
+              }
+            }
+          } catch (err) {
+            console.error("Barcode detection failed", err);
+          }
+          if (cameraRunning) {
+            cameraFrameId = requestAnimationFrame(scanFrame);
           }
         }
 
@@ -658,20 +880,16 @@
               if (!data.ok) throw new Error("Unable to clear list");
               refreshRecent();
               if (messageEl) {
-                messageEl.textContent = "✓ Recent list cleared";
-                messageEl.className = "ok";
-                messageEl.style.display = "block";
-                setTimeout(() => {
-                  messageEl.style.display = "none";
-                }, 3000);
+                displayStatus(messageEl, "ok", "✓ Recent list cleared");
               }
             } catch (err) {
               console.error("Failed to clear recent list", err);
               if (messageEl) {
-                messageEl.textContent =
-                  "✗ " + (err.message || "Failed to clear list");
-                messageEl.className = "err";
-                messageEl.style.display = "block";
+                displayStatus(
+                  messageEl,
+                  "err",
+                  "✗ " + (err.message || "Failed to clear list")
+                );
               }
             }
           });
@@ -680,6 +898,28 @@
         if (form) {
           form.addEventListener("submit", submitScan);
         }
+
+        if (cameraToggle) {
+          cameraToggle.addEventListener("click", async () => {
+            if (cameraRunning) {
+              stopCamera();
+            } else {
+              await startCamera();
+            }
+          });
+        }
+
+        window.addEventListener("beforeunload", () => {
+          if (cameraRunning) {
+            stopCamera();
+          }
+        });
+
+        document.addEventListener("visibilitychange", () => {
+          if (document.hidden) {
+            stopCamera();
+          }
+        });
       });
     </script>
   </body>

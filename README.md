@@ -9,9 +9,8 @@ This repository contains a small Flask application that lets you capture grocery
 | Component | Purpose |
 | --- | --- |
 | `app.py` | Flask application wrapping Google Tasks integration, dedupe logic, and product lookup. |
-| `static/templates/dashboard.html` & `static/js/dashboard.js` | Browser dashboard for USB scanners, list management, and recent scan log. |
-| `static/templates/mobile.html` & `static/js/mobile.js` | Minimal mobile UI that streams from the device camera and posts detected barcodes. |
-| `docs/qrcodes.pdf` | Handy printable QR codes that open the `/mobile` page for quick device pairing. |
+| `static/templates/dashboard.html` & `static/js/dashboard.js` | Responsive web UI that supports desktop USB scanners and mobile browsers, with list management and recent scan log. |
+| `docs/qrcodes.pdf` | Handy printable QR codes that open the dashboard on mobile devices. |
 
 The workflow:
 
@@ -59,7 +58,7 @@ Optional but recommended:
    ```
    On first launch the server runs the OAuth flow, writes the resulting token to `token.json`, and then listens on `https://0.0.0.0:5000/` by default. Change the `PORT` env var or the `ssl_context` tuple if required.
 
-Once running, visit `https://<host>:<port>/` for the dashboard or scan the `/docs/qrcodes.pdf` QR to open the mobile scanner page.
+Once running, visit `https://<host>:<port>/` for the dashboard—which is mobile-friendly—or scan the `/docs/qrcodes.pdf` QR to open it on a phone.
 
 ---
 
@@ -87,20 +86,13 @@ Environment changes require a server restart.
 - **Task list picker** – The “Choose list” dropdown is populated from the Google Tasks API. Switch lists any time; the selection is stored in memory and future scans go to that list.
 - **Recent scans feed** – Shows timestamped entries with the resolved product title and barcode, including duplicate notices.
 - **Clear list button** – Use “Clear list” in the Recent Scans card to wipe the on-screen table and the in-memory cache (useful when starting a new session).
-
-### Mobile Scanner (`/mobile`)
-
-- Grants camera access and continuously detects supported barcode formats (`EAN-13`, `EAN-8`, `Code 128`, `Code 39`, `ITF`, `QR`).
-- Remembers the ingest token in `localStorage`.
-- Posts each new barcode (once per session) to `/scan` and displays success/error feedback inline.
-- Requires HTTPS (or `localhost`) because of browser camera policies.
+- **Camera scanner** – Tap “Start camera” to use the device camera with the browser’s `BarcodeDetector` API (HTTPS or localhost required). Each detected barcode is sent automatically using the current ingest token.
 
 ### API Endpoints
 
 | Method | Path | Description |
 | --- | --- | --- |
-| `GET` | `/` | Dashboard UI (USB scanner workflow). |
-| `GET` | `/mobile` | Mobile camera UI. |
+| `GET` | `/` | Responsive dashboard UI (desktop and mobile). |
 | `GET` | `/recent` | Returns recent scans array `{code, when}` for the dashboard table. |
 | `POST` | `/scan` | Main ingest endpoint. Requires JSON body `{"code": "...", "token": "..."}` or `X-Ingest-Token` header. |
 | `GET` | `/tasklists` | Lists available Google Tasks lists (`id`, `title`) and the currently selected list ID. |
@@ -118,6 +110,7 @@ All responses are JSON except for the templated pages. Non-200 responses from `/
 - **Recent cache** – The in-memory log stores both product title and barcode; clearing it via the dashboard also resets the duplicate detector.
 - **Product enrichment** – The server attempts an Open Food Facts lookup to populate the Google Task title and optional notes (brand, quantity, categories, image). Failures fall back to using the raw code without raising errors.
 - **Google Tasks integration** – Tokens are refreshed automatically when expired. If a task insertion fails (e.g., revoked authorization), the `/scan` endpoint returns an error so the operator can re-authenticate.
+- **Camera mode** – Uses `navigator.mediaDevices.getUserMedia` plus the `BarcodeDetector` API. Browsers must run on HTTPS (or localhost) and support the API to stream scans.
 - **Port freeing** – On macOS/Linux the app calls `lsof` to free the configured port before starting, which helps during development restarts.
 
 ---
@@ -126,7 +119,6 @@ All responses are JSON except for the templated pages. Non-200 responses from `/
 
 - Delete `token.json` if you need to re-run the OAuth flow with a different Google account or scopes.
 - Update `ssl_context` in `app.py` if you replace certificates or switch to HTTP in a trusted network.
-- `docs/qrcodes.pdf` contains QR codes that point to `/mobile` (useful for signage near the pantry).
 - `barcode_favicon.ico` can be served by dropping it into your preferred static file pipeline if you expose favicons.
 
 ---
@@ -136,5 +128,6 @@ All responses are JSON except for the templated pages. Non-200 responses from `/
 - **“Auth failed” in logs or UI** – Ensure the ingest token in `.env`, the dashboard input, and the mobile token all match exactly.
 - **Tasks no longer appear** – Revoked credentials cause `/scan` to emit an error banner. Delete `token.json` and restart to trigger OAuth; also confirm the selected list still exists.
 - **Mobile camera won’t start** – The device must load the page over HTTPS; use the provided TLS certs or set up your own trusted cert.
+- **Camera button disabled or errors** – Modern Chrome/Safari builds on HTTPS (or localhost) are required for `BarcodeDetector`. If unsupported, use the manual field or a USB scanner instead.
 
 With this README you should have all the context necessary to reason about the app’s behavior, extend it, or troubleshoot scanning issues during future sessions.

@@ -85,7 +85,8 @@ Environment changes require a server restart.
 
 - **Manual / USB scans** – Focus the input field, scan a barcode, and it auto-submits. Successful scans clear the field, add a task, and append to “Recent scans”.
 - **Task list picker** – The “Choose list” dropdown is populated from the Google Tasks API. Switch lists any time; the selection is stored in memory and future scans go to that list.
-- **Recent scans feed** – Shows timestamped log of the last 200 items, including duplicate notices.
+- **Recent scans feed** – Shows timestamped entries with the resolved product title and barcode, including duplicate notices.
+- **Clear list button** – Use “Clear list” in the Recent Scans card to wipe the on-screen table and the in-memory cache (useful when starting a new session).
 
 ### Mobile Scanner (`/mobile`)
 
@@ -104,6 +105,7 @@ Environment changes require a server restart.
 | `POST` | `/scan` | Main ingest endpoint. Requires JSON body `{"code": "...", "token": "..."}` or `X-Ingest-Token` header. |
 | `GET` | `/tasklists` | Lists available Google Tasks lists (`id`, `title`) and the currently selected list ID. |
 | `POST` | `/tasklists/select` | Switches the active Google Tasks list. JSON body: `{"tasklist_id": "..."}`. |
+| `POST` | `/recent/clear` | Clears the in-memory recent scan cache and duplicate tracker. |
 
 All responses are JSON except for the templated pages. Non-200 responses from `/scan` include an explanatory message that surfaces in the UI banner.
 
@@ -113,6 +115,7 @@ All responses are JSON except for the templated pages. Non-200 responses from `/
 
 - **Barcode normalization** – Non-digits are stripped; 12-digit UPC-A codes are zero-padded to 13 digits to align with EAN-13.
 - **Duplicate suppression** – Scans of the same normalized code within 3 seconds are ignored, but still logged with a “dup ignored” marker for operator feedback.
+- **Recent cache** – The in-memory log stores both product title and barcode; clearing it via the dashboard also resets the duplicate detector.
 - **Product enrichment** – The server attempts an Open Food Facts lookup to populate the Google Task title and optional notes (brand, quantity, categories, image). Failures fall back to using the raw code without raising errors.
 - **Google Tasks integration** – Tokens are refreshed automatically when expired. If a task insertion fails (e.g., revoked authorization), the `/scan` endpoint returns an error so the operator can re-authenticate.
 - **Port freeing** – On macOS/Linux the app calls `lsof` to free the configured port before starting, which helps during development restarts.

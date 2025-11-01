@@ -7,3 +7,4 @@ token.json
 *.pem
 .idea/
 .vscode/
+NAS.md

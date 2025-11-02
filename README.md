@@ -27,6 +27,7 @@ The workflow:
 - A Google Cloud project with the **Google Tasks API** enabled.
 - An OAuth “Desktop” client downloaded as `credentials.json` in the repo root.
 - Local TLS certificates if you need HTTPS for camera access (the checked-in `Giuseppes-MacBook-Air.local+1.pem` pair are machine-specific; replace as needed).
+- Node.js 18+ (required when enabling Picnic cart sync).
 
 Optional but recommended:
 
@@ -45,6 +46,7 @@ Optional but recommended:
 2. **Install dependencies.**
    ```bash
    pip install -r requirements.txt
+   npm install        # required if you plan to enable Picnic integration
    ```
 3. **Create a `.env` file.**
    ```bash
@@ -72,6 +74,13 @@ All configuration comes from environment variables (e.g. `.env`). Values marked 
 | `INGEST_TOKEN` | `changeme` | Shared secret required by the `/scan` endpoint, dashboard form, and mobile UI. Choose a long random string in production. |
 | `TASKLIST_ID` | *(blank)* | Preferred Google Tasks list ID. Leave blank to auto-select (or create) the first list. |
 | `TASKLIST_TITLE` | *(blank)* | Friendly name used on initial dashboard load. Updated automatically when you switch lists. |
+| `PICNIC_ENABLED` | *(derived)* | Set to `true`/`1` to force-enable Picnic, otherwise automatically enabled when credentials exist. |
+| `PICNIC_USER` | *(blank)* | Picnic account email/username (required if no `PICNIC_AUTH_KEY`). |
+| `PICNIC_PASSWORD` | *(blank)* | Picnic password (required if no `PICNIC_AUTH_KEY`). |
+| `PICNIC_COUNTRY_CODE` | `NL` | Picnic country code (`NL`, `DE`, etc.). |
+| `PICNIC_API_URL` | *(SDK default)* | Override Picnic API base URL if needed. |
+| `PICNIC_AUTH_KEY` | *(blank)* | Pre-issued Picnic auth key; skips login when provided. |
+| `PICNIC_NODE_BIN` | `node` | Path to the Node.js executable used for the Picnic helper. |
 
 
 Environment changes require a server restart.
@@ -87,6 +96,7 @@ Environment changes require a server restart.
 - **Recent scans feed** – Shows timestamped entries with the resolved product title and barcode, including duplicate notices.
 - **Clear list button** – Use “Clear list” in the Recent Scans card to wipe the on-screen table and the in-memory cache (useful when starting a new session).
 - **Camera scanner** – Tap “Start camera” to use the device camera with the browser’s `BarcodeDetector` API (HTTPS or localhost required). Each detected barcode is sent automatically using the current ingest token.
+- **Picnic cart sync** – When Picnic credentials are configured, each successful scan also adds the item to your Picnic shopping cart (via the bundled Node helper).
 
 ### API Endpoints
 
@@ -111,6 +121,7 @@ All responses are JSON except for the templated pages. Non-200 responses from `/
 - **Product enrichment** – The server attempts an Open Food Facts lookup to populate the Google Task title and optional notes (brand, quantity, categories, image). Failures fall back to using the raw code without raising errors.
 - **Google Tasks integration** – Tokens are refreshed automatically when expired. If a task insertion fails (e.g., revoked authorization), the `/scan` endpoint returns an error so the operator can re-authenticate.
 - **Camera mode** – Uses `navigator.mediaDevices.getUserMedia` plus the `BarcodeDetector` API. Browsers must run on HTTPS (or localhost) and support the API to stream scans.
+- **Picnic integration** – `picnic_client.mjs` (Node.js) handles login/search/cart additions. Keep credentials in environment variables and ensure Node is available in the runtime/container.
 - **Port freeing** – On macOS/Linux the app calls `lsof` to free the configured port before starting, which helps during development restarts.
 
 ---
@@ -120,6 +131,7 @@ All responses are JSON except for the templated pages. Non-200 responses from `/
 - Delete `token.json` if you need to re-run the OAuth flow with a different Google account or scopes.
 - Update `ssl_context` in `app.py` if you replace certificates or switch to HTTP in a trusted network.
 - `barcode_favicon.ico` can be served by dropping it into your preferred static file pipeline if you expose favicons.
+- `picnic_client.mjs` is invoked by the Flask app; keep Node.js available (and run `npm install`) in any deployment image where Picnic sync is enabled.
 
 ---
 
@@ -129,5 +141,6 @@ All responses are JSON except for the templated pages. Non-200 responses from `/
 - **Tasks no longer appear** – Revoked credentials cause `/scan` to emit an error banner. Delete `token.json` and restart to trigger OAuth; also confirm the selected list still exists.
 - **Mobile camera won’t start** – The device must load the page over HTTPS; use the provided TLS certs or set up your own trusted cert.
 - **Camera button disabled or errors** – Modern Chrome/Safari builds on HTTPS (or localhost) are required for `BarcodeDetector`. If unsupported, use the manual field or a USB scanner instead.
+- **Picnic add failed** – Check that Node is installed, the helper (`picnic_client.mjs`) exists, and environment variables (`PICNIC_USER`/`PICNIC_PASSWORD` or `PICNIC_AUTH_KEY`) are configured. Failure messages show up in the dashboard banner and server logs.
 
 With this README you should have all the context necessary to reason about the app’s behavior, extend it, or troubleshoot scanning issues during future sessions.

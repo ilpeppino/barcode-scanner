@@ -19,6 +19,14 @@ The workflow:
 3. A task is inserted into the active Google Tasks list, and the scan is prepended to the in-memory “Recent scans” feed.
 4. The dashboard polls `/recent` and `/tasklists` to keep the UI live, and supports switching the active Google Tasks list at any time.
 
+## Features
+
+- **Instant Google Tasks sync** – Every barcode becomes a new task (with optional product metadata) on the selected list.
+- **Dual input modes** – Works with USB “keyboard wedge” scanners or the built-in camera scanner (modern HTTPS browsers required).
+- **Recent activity board** – Shows timestamps, resolved titles, and barcodes for the last 200 scans plus duplicate warnings.
+- **Task list selector** – Choose a default list at runtime without editing environment variables.
+- **Mobile-friendly UI** – Responsive layout adapts to phones/tablets for pantry-side scanning.
+
 ---
 
 ## Requirements
@@ -86,7 +94,7 @@ Environment changes require a server restart.
 - **Task list picker** – The “Choose list” dropdown is populated from the Google Tasks API. Switch lists any time; the selection is stored in memory and future scans go to that list.
 - **Recent scans feed** – Shows timestamped entries with the resolved product title and barcode, including duplicate notices.
 - **Clear list button** – Use “Clear list” in the Recent Scans card to wipe the on-screen table and the in-memory cache (useful when starting a new session).
-- **Camera scanner** – Tap “Start camera” to use the device camera with the browser’s `BarcodeDetector` API (HTTPS or localhost required). Each detected barcode is sent automatically using the current ingest token.
+- **Camera scanner** – Tap “Start camera” to use the device camera with the browser’s `BarcodeDetector` API (HTTPS or localhost required). Make sure the ingest token field is filled; every detected barcode is then submitted automatically.
 
 ### API Endpoints
 

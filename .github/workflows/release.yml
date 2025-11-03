@@ -3,7 +3,7 @@ name: Release (stable)
 on:
   push:
     tags:
-      - "v*" # e.g. v1.0.0
+      - "v*"
   workflow_dispatch:
 
 jobs:
@@ -12,6 +12,10 @@ jobs:
     permissions:
       contents: read
       packages: write
+
+    env:
+      IMAGE_TAG: ${{ github.ref_name }}
+
     steps:
       - uses: actions/checkout@v4
 
@@ -32,9 +36,11 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: ./dockerfile # use your lowercase filename
+          file: ./dockerfile
           push: true
           platforms: linux/amd64
+          build-args: |
+            IMAGE_TAG=${{ env.IMAGE_TAG }}
           tags: |
             ghcr.io/${{ secrets.GHCR_USERNAME }}/barcode-scanner:${{ github.ref_name }}
             ghcr.io/${{ secrets.GHCR_USERNAME }}/barcode-scanner:stable

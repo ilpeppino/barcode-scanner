@@ -294,6 +294,12 @@ def clear_recent():
     LAST_SEEN.clear()
     return jsonify({"ok": True})
 
+@app.route("/version")
+def version():
+    import os
+    tag = os.getenv("IMAGE_TAG", "unknown")
+    return jsonify({"version": tag})
+
 if __name__ == "__main__":
     # Only reclaim the port on the initial run; the reloader child shouldn't kill itself.
     if os.environ.get("WERKZEUG_RUN_MAIN") != "true":

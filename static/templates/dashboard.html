@@ -474,13 +474,20 @@
 
         <!-- Recent Scans Card -->
         <div class="card recent-scans">
-          <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
-            <h3 style="margin-bottom:0;">Recent Scans</h3>
+          <div
+            style="
+              display: flex;
+              align-items: center;
+              justify-content: space-between;
+              gap: 12px;
+            "
+          >
+            <h3 style="margin-bottom: 0">Recent Scans</h3>
             <button id="clear-recent-btn" class="clear-button" type="button">
               Clear list
             </button>
           </div>
-          <p style="color:#718096; font-size:14px; margin-top:12px;">
+          <p style="color: #718096; font-size: 14px; margin-top: 12px">
             Latest activity from this session
           </p>
           <div class="table-wrapper">
@@ -567,7 +574,9 @@
               tbody.innerHTML = data
                 .map(
                   (x) =>
-                    `<tr><td>${x.when}</td><td>${x.title || "—"}</td><td class="code-cell">${x.code}</td></tr>`
+                    `<tr><td>${x.when}</td><td>${
+                      x.title || "—"
+                    }</td><td class="code-cell">${x.code}</td></tr>`
                 )
                 .join("");
             }
@@ -754,7 +763,9 @@
           cameraToggle.disabled = true;
           try {
             if (!cameraDetector) {
-              cameraDetector = new BarcodeDetector({ formats: BARCODE_FORMATS });
+              cameraDetector = new BarcodeDetector({
+                formats: BARCODE_FORMATS,
+              });
             }
             cameraStream = await navigator.mediaDevices.getUserMedia({
               video: { facingMode: "environment" },
@@ -929,5 +940,15 @@
         });
       });
     </script>
+    <footer
+      style="
+        margin-top: 1rem;
+        font-size: 0.85rem;
+        opacity: 0.7;
+        text-align: center;
+      "
+    >
+      build: {{ version }}
+    </footer>
   </body>
 </html>

@@ -2,7 +2,7 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-ARG IMAGE_TAG
+ARG IMAGE_TAG=unknown
 ENV IMAGE_TAG=$IMAGE_TAG
 
 COPY requirements.txt .

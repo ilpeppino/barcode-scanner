@@ -294,6 +294,11 @@ def clear_recent():
     LAST_SEEN.clear()
     return jsonify({"ok": True})
 
+# expose version everywhere in templates
+@app.context_processor
+def inject_version():
+    return {"version": os.getenv("IMAGE_TAG", "unknown")}
+
 @app.route("/version")
 def version():
     import os

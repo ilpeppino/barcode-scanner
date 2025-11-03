@@ -247,91 +247,6 @@
         transform: translateY(0);
       }
 
-      .toggle-switch {
-        position: relative;
-        display: inline-block;
-        width: 46px;
-        height: 24px;
-      }
-
-      .toggle-switch input {
-        opacity: 0;
-        width: 0;
-        height: 0;
-      }
-
-      .toggle-slider {
-        position: absolute;
-        cursor: pointer;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: #cbd5e0;
-        transition: all 0.2s;
-        border-radius: 999px;
-      }
-
-      .toggle-slider::before {
-        position: absolute;
-        content: "";
-        height: 18px;
-        width: 18px;
-        left: 3px;
-        bottom: 3px;
-        background-color: #ffffff;
-        transition: all 0.2s;
-        border-radius: 50%;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-      }
-
-      .toggle-switch input:checked + .toggle-slider {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      }
-
-      .toggle-switch input:checked + .toggle-slider::before {
-        transform: translateX(22px);
-      }
-
-      .picnic-toggle {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-      }
-
-      .picnic-toggle.disabled {
-        opacity: 0.6;
-        cursor: not-allowed;
-      }
-
-      .toggle-label {
-        font-size: 14px;
-        color: #4a5568;
-        font-weight: 500;
-      }
-
-      .picnic-status {
-        margin-top: 12px;
-        font-size: 13px;
-        color: #4a5568;
-        display: none;
-      }
-
-      .picnic-status.ok {
-        color: #22543d;
-        display: block;
-      }
-
-      .picnic-status.err {
-        color: #742a2a;
-        display: block;
-      }
-
-      .picnic-status.info {
-        color: #4a5568;
-        display: block;
-      }
-
       .form-hint {
         font-size: 13px;
         color: #718096;
@@ -492,8 +407,7 @@
       }
     </style>
   </head>
-  <body data-picnic-enabled="{{ 'true' if picnic_enabled else 'false' }}"
-        data-picnic-configured="{{ 'true' if picnic_configured else 'false' }}">
+  <body>
     <div class="container">
       <!-- Header -->
       <div class="header">
@@ -509,21 +423,6 @@
             <select id="tasklist-select">
               <option>Loading...</option>
             </select>
-          </div>
-          <div
-            id="picnic-toggle-wrapper"
-            class="picnic-toggle"
-            title="Toggle Picnic cart sync"
-          >
-            <label class="toggle-switch">
-              <input
-                type="checkbox"
-                id="picnic-toggle"
-                {% if picnic_enabled %}checked{% endif %}
-              />
-              <span class="toggle-slider"></span>
-            </label>
-            <span class="toggle-label">Picnic sync</span>
           </div>
         </div>
       </div>
@@ -553,7 +452,6 @@
             </div>
           </form>
           <div id="msg"></div>
-          <div id="picnic-status" class="picnic-status info"></div>
         </div>
 
         <div class="card camera-card">
@@ -620,33 +518,6 @@
         const cameraToggle = document.getElementById("camera-toggle");
         const cameraStatus = document.getElementById("camera-status");
         const cameraVideo = document.getElementById("camera-stream");
-        const picnicStatus = document.getElementById("picnic-status");
-        const picnicToggle = document.getElementById("picnic-toggle");
-        const picnicToggleWrapper = document.getElementById("picnic-toggle-wrapper");
-
-        const picnicConfigured =
-          document.body.dataset.picnicConfigured === "true";
-        const picnicDefaultEnabled =
-          document.body.dataset.picnicEnabled === "true";
-        const PICNIC_TOGGLE_KEY = "picnicSyncEnabled";
-        let picnicSyncEnabled = picnicDefaultEnabled;
-        const storedPicnicPref = localStorage.getItem(PICNIC_TOGGLE_KEY);
-        if (storedPicnicPref !== null) {
-          picnicSyncEnabled = storedPicnicPref === "true";
-        }
-        if (!picnicConfigured) {
-          picnicSyncEnabled = false;
-          localStorage.removeItem(PICNIC_TOGGLE_KEY);
-        }
-        if (picnicToggle) {
-          picnicToggle.checked = picnicConfigured && picnicSyncEnabled;
-          if (!picnicConfigured) {
-            picnicToggle.checked = false;
-            picnicToggle.disabled = true;
-            picnicToggleWrapper?.classList.add("disabled");
-          }
-        }
-
         let cameraRunning = false;
         let cameraStream = null;
         let cameraDetector = null;
@@ -660,71 +531,6 @@
           "itf",
           "qr_code",
         ];
-
-        function updatePicnicBanner(state, text) {
-          if (!picnicStatus) return;
-          picnicStatus.classList.remove("ok", "err", "info");
-          if (!text) {
-            picnicStatus.style.display = "none";
-            return;
-          }
-          picnicStatus.classList.add(state || "info");
-          picnicStatus.textContent = text;
-          picnicStatus.style.display = "block";
-        }
-
-        function defaultPicnicMessage() {
-          if (!picnicConfigured) {
-            return "Picnic sync disabled. Configure credentials in .env to enable.";
-          }
-          return picnicSyncEnabled
-            ? "Picnic sync enabled."
-            : "Picnic sync disabled for this device.";
-        }
-
-        function handlePicnicResponse(data) {
-          if (!picnicStatus) return;
-          if (
-            !data ||
-            data.picnic_message === undefined ||
-            data.picnic_message === null ||
-            data.picnic_message === ""
-          ) {
-            updatePicnicBanner("info", defaultPicnicMessage());
-            return;
-          }
-          const enabled = Boolean(data.picnic_enabled);
-          const ok = Boolean(data.picnic_ok);
-          const message = data.picnic_message || defaultPicnicMessage();
-          if (enabled) {
-            updatePicnicBanner(ok ? "ok" : "err", message);
-          } else {
-            const lowered = message.toLowerCase();
-            const state = lowered.includes("failed") ? "err" : "info";
-            updatePicnicBanner(state, message);
-          }
-        }
-
-        updatePicnicBanner("info", defaultPicnicMessage());
-
-        if (picnicToggle) {
-          picnicToggle.addEventListener("change", () => {
-            if (!picnicConfigured) {
-              picnicToggle.checked = false;
-              updatePicnicBanner(
-                "err",
-                "Picnic credentials missing on server. Update .env to enable."
-              );
-              return;
-            }
-            picnicSyncEnabled = picnicToggle.checked;
-            localStorage.setItem(
-              PICNIC_TOGGLE_KEY,
-              picnicSyncEnabled ? "true" : "false"
-            );
-            updatePicnicBanner("info", defaultPicnicMessage());
-          });
-        }
 
         function displayStatus(el, state, text) {
           if (!el) return;
@@ -835,7 +641,7 @@
 
         async function postScan(code, statusEl, options = {}) {
           const target = statusEl || messageEl;
-          if (!target) return { ok: false, data: null };
+          if (!target) return false;
           const token = tokenInput ? tokenInput.value.trim() : "";
           if (!token) {
             displayStatus(
@@ -843,12 +649,7 @@
               "err",
               "✗ Enter the ingest token before scanning."
             );
-            handlePicnicResponse({
-              picnic_enabled: false,
-              picnic_ok: false,
-              picnic_message: defaultPicnicMessage(),
-            });
-            return { ok: false, data: null };
+            return false;
           }
           try {
             const res = await fetch("/scan", {
@@ -857,11 +658,7 @@
                 "Content-Type": "application/json",
                 "X-Ingest-Token": token,
               },
-              body: JSON.stringify({
-                code,
-                token,
-                picnic_enabled: picnicSyncEnabled,
-              }),
+              body: JSON.stringify({ code, token }),
             });
             const data = await res.json();
             const ok = res.ok;
@@ -871,14 +668,13 @@
               ok ? "ok" : "err",
               prefix + (data.message || JSON.stringify(data))
             );
-            handlePicnicResponse(data);
             if (ok) {
               refreshRecent();
               if (typeof options.onSuccess === "function") {
                 options.onSuccess();
               }
             }
-            return { ok, data };
+            return ok;
           } catch (err) {
             console.error("Failed to submit scan", err);
             displayStatus(
@@ -886,12 +682,7 @@
               "err",
               "✗ " + (err.message || "Unable to submit scan")
             );
-            handlePicnicResponse({
-              picnic_enabled: picnicSyncEnabled && picnicConfigured,
-              picnic_ok: false,
-              picnic_message: "Picnic sync failed: " + (err.message || "Unknown error"),
-            });
-            return { ok: false, data: null };
+            return false;
           }
         }
 
@@ -910,8 +701,8 @@
             );
             return;
           }
-          const result = await postScan(code, messageEl);
-          if (result.ok) {
+          const ok = await postScan(code, messageEl);
+          if (ok) {
             codeInput.value = "";
             codeInput.focus();
           }
@@ -957,14 +748,6 @@
               cameraStatus,
               "err",
               "Enter the ingest token before starting the camera."
-            );
-            return;
-          }
-          if (picnicSyncEnabled && !picnicConfigured) {
-            displayStatus(
-              cameraStatus,
-              "err",
-              "Picnic credentials missing. Disable Picnic sync or update the server settings."
             );
             return;
           }
@@ -1053,7 +836,7 @@
               const code = (barcode.rawValue || "").trim();
               if (!code || cameraSeen.has(code)) continue;
               cameraSeen.add(code);
-              const result = await postScan(code, cameraStatus, {
+              const ok = await postScan(code, cameraStatus, {
                 onSuccess: () => {
                   if (cameraRunning) {
                     setTimeout(() => {
@@ -1068,7 +851,7 @@
                   }
                 },
               });
-              if (!result.ok) {
+              if (!ok) {
                 cameraSeen.delete(code);
               } else {
                 setTimeout(() => cameraSeen.delete(code), 5000);
@@ -1106,11 +889,6 @@
               if (messageEl) {
                 displayStatus(messageEl, "ok", "✓ Recent list cleared");
               }
-              handlePicnicResponse({
-                picnic_enabled: picnicSyncEnabled && picnicConfigured,
-                picnic_ok: false,
-                picnic_message: defaultPicnicMessage(),
-              });
             } catch (err) {
               console.error("Failed to clear recent list", err);
               if (messageEl) {
@@ -1120,13 +898,6 @@
                   "✗ " + (err.message || "Failed to clear list")
                 );
               }
-              handlePicnicResponse({
-                picnic_enabled: picnicSyncEnabled && picnicConfigured,
-                picnic_ok: false,
-                picnic_message:
-                  "Picnic sync status unchanged. " +
-                  (err.message || "Unable to clear recent list."),
-              });
             }
           });
         }

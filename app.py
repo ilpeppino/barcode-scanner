@@ -1,7 +1,5 @@
-import json
 import os
 from datetime import datetime
-from pathlib import Path
 
 from flask import Flask, request, jsonify, render_template, abort
 from dotenv import load_dotenv
@@ -28,30 +26,6 @@ PORT = int(os.getenv("PORT", "5000"))
 INGEST_TOKEN = os.getenv("INGEST_TOKEN", "changeme")
 TASKLIST_ID = os.getenv("TASKLIST_ID", "").strip()
 TASKLIST_TITLE = os.getenv("TASKLIST_TITLE", "").strip()
-PICNIC_USER = os.getenv("PICNIC_USER", "").strip()
-PICNIC_PASSWORD = os.getenv("PICNIC_PASSWORD", "").strip()
-PICNIC_COUNTRY_CODE = os.getenv("PICNIC_COUNTRY_CODE", "").strip()
-PICNIC_API_URL = os.getenv("PICNIC_API_URL", "").strip()
-PICNIC_AUTH_KEY = os.getenv("PICNIC_AUTH_KEY", "").strip()
-PICNIC_NODE_BIN = os.getenv("PICNIC_NODE_BIN", "").strip() or "node"
-PICNIC_FLAG = os.getenv("PICNIC_ENABLED", "").strip().lower()
-PICNIC_HELPER_PATH = Path(__file__).parent / "picnic_client.mjs"
-
-PICNIC_ENABLED = (
-    PICNIC_FLAG in {"1", "true", "yes", "on"}
-    or bool(PICNIC_AUTH_KEY)
-    or (bool(PICNIC_USER) and bool(PICNIC_PASSWORD))
-)
-PICNIC_CONFIGURED = PICNIC_ENABLED and PICNIC_HELPER_PATH.exists()
-PICNIC_API_URL = os.getenv("PICNIC_API_URL", "").strip()
-PICNIC_AUTH_KEY = os.getenv("PICNIC_AUTH_KEY", "").strip()
-PICNIC_NODE_BIN = os.getenv("PICNIC_NODE_BIN", "").strip() or "node"
-PICNIC_HELPER_PATH = Path(__file__).parent / "picnic_client.mjs"
-PICNIC_ENABLED = (
-    os.getenv("PICNIC_ENABLED", "").strip().lower() in {"1", "true", "yes"}
-    or bool(PICNIC_AUTH_KEY)
-    or (bool(PICNIC_USER) and bool(PICNIC_PASSWORD))
-)
 
 # Tell Flask where the Jinja templates actually live (they're under static/templates).
 app = Flask(__name__, template_folder="static/templates", static_folder="static")
@@ -220,95 +194,6 @@ def log_scan(code, title=None):
     del RECENT[200:]  # keep last 200
 
 
-def parse_bool(value):
-    if value is None:
-        return None
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, (int, float)):
-        return value != 0
-    s = str(value).strip().lower()
-    if s in {"1", "true", "yes", "on"}:
-        return True
-    if s in {"0", "false", "no", "off"}:
-        return False
-    return None
-
-
-def add_to_picnic_cart(code: str, title: str | None = None) -> tuple[bool, str]:
-    """
-    Invoke the Node.js helper to add an item to the Picnic cart.
-    Returns (success, message).
-    """
-    if not PICNIC_ENABLED:
-        return False, "Picnic integration disabled"
-    if not PICNIC_CONFIGURED:
-        return False, "Picnic integration not configured on server"
-    if not PICNIC_HELPER_PATH.exists():
-        logger.warning("Picnic helper script missing at %s", PICNIC_HELPER_PATH)
-        return False, "Picnic helper not found"
-
-    payload = {"barcode": code, "quantity": 1}
-    if title:
-        payload["title"] = title
-
-    env = os.environ.copy()
-    if PICNIC_USER:
-        env["PICNIC_USER"] = PICNIC_USER
-    if PICNIC_PASSWORD:
-        env["PICNIC_PASSWORD"] = PICNIC_PASSWORD
-    if PICNIC_COUNTRY_CODE:
-        env["PICNIC_COUNTRY_CODE"] = PICNIC_COUNTRY_CODE
-    if PICNIC_API_URL:
-        env["PICNIC_API_URL"] = PICNIC_API_URL
-    if PICNIC_AUTH_KEY:
-        env["PICNIC_AUTH_KEY"] = PICNIC_AUTH_KEY
-
-    try:
-        result = subprocess.run(
-            [PICNIC_NODE_BIN, str(PICNIC_HELPER_PATH), json.dumps(payload)],
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=15,
-            env=env,
-        )
-    except FileNotFoundError:
-        logger.exception("Node executable not found while invoking Picnic helper.")
-        return False, "Node runtime not available"
-    except subprocess.TimeoutExpired:
-        logger.exception("Picnic helper timed out for barcode %s", code)
-        return False, "Picnic helper timed out"
-
-    stdout = result.stdout.strip()
-    stderr = result.stderr.strip()
-
-    if result.returncode != 0:
-        message = "Picnic helper failed"
-        try:
-            error_payload = json.loads(stderr or stdout)
-            message = error_payload.get("message", message)
-        except Exception:
-            pass
-        logger.warning(
-            "Picnic helper exited with %s for barcode %s: %s",
-            result.returncode,
-            code,
-            stderr or stdout,
-        )
-        return False, message
-
-    info = "Picnic cart updated"
-    try:
-        parsed = json.loads(stdout) if stdout else {}
-        info = parsed.get("message") or info
-    except json.JSONDecodeError:
-        pass
-
-    logger.info("Picnic helper succeeded for %s: %s", code, stdout)
-    return True, info
-
-
 # ---------- Routes ----------
 
 
@@ -319,8 +204,6 @@ def home():
         "dashboard.html",
         active_list_title=get_tasklist_title(),
         ingest_token=INGEST_TOKEN,
-        picnic_enabled=PICNIC_ENABLED,
-        picnic_configured=PICNIC_CONFIGURED,
     )
 
 @app.route("/recent")
@@ -374,40 +257,16 @@ def scan():
         )
         abort(401)
 
-    client_pref = parse_bool(data.get("picnic_enabled"))
-    if client_pref is None:
-        client_pref = parse_bool(request.headers.get("X-Picnic-Enabled"))
-    should_sync_picnic = PICNIC_CONFIGURED and (
-        PICNIC_ENABLED if client_pref is None else (PICNIC_ENABLED and client_pref)
-    )
-
     raw = (data.get("code") or "").strip()
     logger.info("Received scan request from %s: %s", request.remote_addr, raw)
     if not raw:
-        return (
-            jsonify(
-                {
-                    "ok": False,
-                    "message": "Missing code",
-                    "picnic_enabled": False,
-                    "picnic_ok": False,
-                    "picnic_message": "Picnic sync skipped",
-                }
-            ),
-            400,
-        )
+        return jsonify({"ok": False, "message": "Missing code"}), 400
 
     code = normalize_barcode(raw)
     if is_recent_duplicate(code):
         logger.info("Duplicate detected for code %s - ignoring", code)
         log_scan(code + " (dup ignored)", title="Duplicate ignored")
-        return jsonify({
-            "ok": True,
-            "message": f"Ignored duplicate: {code}",
-            "picnic_enabled": False,
-            "picnic_ok": False,
-            "picnic_message": "Picnic sync skipped (duplicate)",
-        }), 200
+        return jsonify({"ok": True, "message": f"Ignored duplicate: {code}"}), 200
 
     title, notes = lookup_product_title_notes(code)
     logger.info("Creating task for code %s with title '%s'", code, title)
@@ -420,46 +279,13 @@ def scan():
                 {
                     "ok": False,
                     "message": "Failed to create Google Task. Check server logs and re-authenticate if needed.",
-                    "picnic_enabled": False,
-                    "picnic_ok": False,
-                    "picnic_message": "Picnic sync skipped",
                 }
             ),
             500,
         )
     logger.info("Task created successfully for %s", code)
     log_scan(code, title=title)
-    picnic_enabled_resp = False
-    picnic_ok = False
-    if should_sync_picnic:
-        picnic_ok, picnic_msg = add_to_picnic_cart(code, title)
-        picnic_enabled_resp = True
-    else:
-        if not PICNIC_CONFIGURED:
-            picnic_msg = "Picnic integration not configured on server"
-        elif PICNIC_ENABLED and client_pref is False:
-            picnic_msg = "Picnic sync disabled for this device"
-        elif PICNIC_ENABLED:
-            picnic_msg = "Picnic sync disabled"
-        else:
-            picnic_msg = "Picnic integration disabled"
-
-    message = f"Added task: {title}"
-    if picnic_enabled_resp:
-        if picnic_ok:
-            message += " (Picnic cart updated)"
-        else:
-            message += f" (Picnic add failed: {picnic_msg})"
-    elif PICNIC_ENABLED:
-        message += f" ({picnic_msg})"
-
-    return jsonify({
-        "ok": True,
-        "message": message,
-        "picnic_enabled": picnic_enabled_resp,
-        "picnic_ok": picnic_ok,
-        "picnic_message": picnic_msg,
-    }), 200
+    return jsonify({"ok": True, "message": f"Added task: {title}"}), 200
 
 
 @app.route("/recent/clear", methods=["POST"])

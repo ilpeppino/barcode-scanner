@@ -318,6 +318,6 @@ if __name__ == "__main__":
     app.run(
         host="0.0.0.0",
         port=PORT,
-        debug=True,
-        ssl_context=("Giuseppes-MacBook-Air.local+1.pem", "Giuseppes-MacBook-Air.local+1-key.pem"),
+        debug=True
+#         ssl_context=("Giuseppes-MacBook-Air.local+1.pem", "Giuseppes-MacBook-Air.local+1-key.pem"),
     )

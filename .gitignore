@@ -9,3 +9,5 @@ token.json
 .vscode/
 NAS.md
 node_modules
+certs/*.key
+certs/*.crt

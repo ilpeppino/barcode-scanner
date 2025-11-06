@@ -111,9 +111,27 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  // Initial data fetches with smarter refresh to prevent flicker or random wipes.
+  let lastData = [];
+
+  async function refreshRecent() {
+    if (!tbody) return;
+    try {
+      const res = await fetch('/recent');
+      const data = await res.json();
+      // Update only if data actually changed
+      if (JSON.stringify(data) !== JSON.stringify(lastData)) {
+        tbody.innerHTML = data.map(x => `<tr><td>${x.when}</td><td>${x.code}</td></tr>`).join('');
+        lastData = data;
+      }
+    } catch (err) {
+      console.error('Failed to refresh recent scans', err);
+    }
+  }
+
   // Initial data fetches.
   refreshRecent();
-  setInterval(refreshRecent, 1500);
+  setInterval(refreshRecent, 3000);
 
   if (tasklistSelect) {
     loadTasklists();

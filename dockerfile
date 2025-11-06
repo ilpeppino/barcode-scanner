@@ -9,6 +9,7 @@ WORKDIR /app
 
 ARG IMAGE_TAG=unknown
 ENV IMAGE_TAG=$IMAGE_TAG
+LABEL org.opencontainers.image.version=${IMAGE_TAG}
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt gunicorn

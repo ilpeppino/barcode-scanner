@@ -1,13 +1,11 @@
 ## 🧭 TODO / Future Enhancements
 
 - [ ] **Integrate QuaggaJS** to enable barcode scanning on iPhone (Safari lacks the `BarcodeDetector` API).
-- [ ] **Implement OCR** (Optical Character Recognition) to read printed text alongside barcodes.
-- [ ] **Explore lightweight NAS-side OCR integration** (e.g., Tesseract in a sidecar container) and expose a `/ocr` endpoint.
-- [x] **Add build version to the web app footer** using a Flask `app_version` context processor (reads `IMAGE_TAG`).
-- [x] **Document Android CA installation and HTTPS trust config** for new devices (mkcert CA → camera works).
 - [ ] **Optional Pi-hole cleanup/automation** scripts (enable/disable, backups, updates)
-- [ ] **Camera portrait mode**
 - [ ] **One section with selector**
+- [ ] **Map domain & auth hardening**
+  - [ ] Configure `gtemp1.com` (Hostinger) so requests proxy/redirect to the Docker endpoint.
+  - [ ] Add basic authentication so only family members can access the dashboard/API.
 
 ### New
 

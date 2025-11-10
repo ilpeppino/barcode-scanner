@@ -413,6 +413,9 @@
           <div id="camera-status" class="status-line info">
             Camera idle. Select a mode to begin.
           </div>
+          <button id="camera-permission-btn" class="secondary-btn hidden">
+            Enable Camera
+          </button>
           <div id="msg"></div>
 
           <div class="info-panel" id="recent-card">
@@ -467,6 +470,9 @@
         const clearButton = document.getElementById("clear-recent-btn");
         const captureBtn = document.getElementById("capture-btn");
         const cameraStatus = document.getElementById("camera-status");
+        const cameraPermissionBtn = document.getElementById(
+          "camera-permission-btn"
+        );
         const cameraWrap = document.getElementById("camera-wrap");
         const cameraVideo = document.getElementById("camera-stream");
         const modeButtons = document.querySelectorAll("[data-mode]");
@@ -647,7 +653,7 @@
           displayStatus(cameraStatus, "info", reason);
         }
 
-        async function startCamera() {
+        async function startCamera({ userInitiated = false } = {}) {
           if (cameraRunning) return;
           if (
             !navigator.mediaDevices ||
@@ -680,7 +686,19 @@
                     height: { ideal: 1280 },
                   },
                 };
-          cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
+          if (cameraPermissionBtn) {
+            cameraPermissionBtn.classList.add("hidden");
+          }
+          try {
+            cameraStream = await navigator.mediaDevices.getUserMedia(
+              constraints
+            );
+          } catch (err) {
+            if (!userInitiated && cameraPermissionBtn) {
+              cameraPermissionBtn.classList.remove("hidden");
+            }
+            throw err;
+          }
           cameraVideo.srcObject = cameraStream;
           if (cameraWrap) cameraWrap.classList.remove("hidden");
           try {
@@ -763,7 +781,7 @@
           if (currentMode === "barcode") return; // button hidden anyway
           if (!cameraRunning) {
             try {
-              await startCamera();
+              await startCamera({ userInitiated: true });
             } catch (err) {
               displayStatus(cameraStatus, "err", err.message);
               return;
@@ -845,6 +863,17 @@
           captureBtn.addEventListener("click", handleCaptureClick);
         }
 
+        if (cameraPermissionBtn) {
+          cameraPermissionBtn.addEventListener("click", async () => {
+            cameraPermissionBtn.classList.add("hidden");
+            try {
+              await startCamera({ userInitiated: true });
+            } catch (err) {
+              displayStatus(cameraStatus, "err", err.message);
+            }
+          });
+        }
+
         window.addEventListener("beforeunload", () => {
           if (cameraRunning) stopCamera();
         });
@@ -852,14 +881,15 @@
           if (document.hidden && cameraRunning) stopCamera();
         });
 
-        startCamera().catch((err) =>
+        startCamera().catch((err) => {
+          if (cameraPermissionBtn) cameraPermissionBtn.classList.remove("hidden");
           displayStatus(
             cameraStatus,
             "err",
             err.message ||
-              "Camera blocked. Allow permissions or click Capture to retry."
-          )
-        );
+              "Camera blocked. Tap Enable Camera to allow access."
+          );
+        });
       });
     </script>
   </body>

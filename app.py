@@ -331,7 +331,8 @@ def ocr():
 # expose version everywhere in templates
 @app.context_processor
 def inject_version():
-    return {"version": os.getenv("IMAGE_TAG", "unknown")}
+    ver = os.getenv("IMAGE_TAG", "unknown")
+    return {"version": ver, "app_version": ver}
 
 @app.route("/version")
 def version():

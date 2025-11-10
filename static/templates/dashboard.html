@@ -184,12 +184,13 @@
       }
 
       video {
-        width: 100%;
-        margin-top: 24px;
+        width: min(100%, 420px);
+        aspect-ratio: 9 / 16;
+        margin: 24px auto 0;
         border-radius: 22px;
         background: #0d1b2a;
-        max-height: 340px;
         object-fit: cover;
+        display: block;
       }
 
       video.hidden {
@@ -605,7 +606,11 @@
           }
           if (captureBtn) captureBtn.disabled = true;
           cameraStream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: "environment" },
+            video: {
+              facingMode: { ideal: "environment" },
+              width: { ideal: 720 },
+              height: { ideal: 1280 },
+            },
           });
           cameraVideo.srcObject = cameraStream;
           cameraVideo.classList.remove("hidden");

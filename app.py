@@ -14,7 +14,7 @@ import requests
 import signal
 import subprocess
 
-from PIL import Image
+from PIL import Image, ImageOps, ImageEnhance
 import pkgutil
 
 if not hasattr(pkgutil, "find_loader"):
@@ -308,10 +308,16 @@ def ocr():
         return jsonify({"ok": False, "message": "Invalid file"}), 400
 
     try:
-        image = Image.open(file.stream).convert("RGB")
+        raw_image = Image.open(file.stream).convert("RGB")
     except Exception:
         logger.exception("Unable to open uploaded file for OCR")
         return jsonify({"ok": False, "message": "Unable to read image"}), 400
+
+    # Preprocess: grayscale + contrast + slight sharpening + adaptive threshold
+    image = ImageOps.grayscale(raw_image)
+    image = ImageEnhance.Contrast(image).enhance(1.8)
+    image = ImageEnhance.Sharpness(image).enhance(1.2)
+    image = image.point(lambda x: 0 if x < 140 else 255, "L")
 
     language = request.form.get("language") or "eng"
     config = request.form.get("tesseract_config") or ""

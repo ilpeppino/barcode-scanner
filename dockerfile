@@ -2,7 +2,9 @@ FROM python:3.12-slim
 
 # System deps (optional but good practice)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates curl && \
+    ca-certificates \
+    curl \
+    tesseract-ocr && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

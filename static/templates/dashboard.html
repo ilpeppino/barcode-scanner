@@ -141,27 +141,6 @@
       }
 
       /* Scanner Form */
-      .scanner-form {
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
-      }
-
-      input[type="text"] {
-        padding: 14px 18px;
-        border: 2px solid #e2e8f0;
-        border-radius: 12px;
-        font-size: 15px;
-        transition: all 0.2s;
-        outline: none;
-        font-family: inherit;
-      }
-
-      input[type="text"]:focus {
-        border-color: #667eea;
-        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-      }
-
       button {
         padding: 14px 24px;
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -245,6 +224,45 @@
 
       button:active {
         transform: translateY(0);
+      }
+
+      .ocr-form {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .ocr-form input[type="file"] {
+        border: 2px dashed #c3dafe;
+        border-radius: 12px;
+        padding: 20px;
+        background: #faf5ff;
+        color: #4c51bf;
+        cursor: pointer;
+      }
+
+      #ocr-output {
+        width: 100%;
+        min-height: 160px;
+        border: 2px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 14px;
+        font-family: "JetBrains Mono", "Courier New", monospace;
+        font-size: 14px;
+        resize: vertical;
+        background: #f7fafc;
+        color: #2d3748;
+      }
+
+      #ocr-status {
+        min-height: 1.2em;
+        font-size: 14px;
+      }
+
+      .ocr-actions {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
       }
 
       .form-hint {
@@ -405,6 +423,10 @@
       .loading {
         animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
       }
+
+      .hidden {
+        display: none !important;
+      }
     </style>
   </head>
   <body>
@@ -429,38 +451,36 @@
 
       <!-- Main Grid -->
       <div class="main-grid">
-        <!-- Scanner Input Card -->
-        <div class="card">
-          <h3>Quick Scan</h3>
-          <form id="f" class="scanner-form">
-            <input
-              id="code"
-              type="text"
-              placeholder="Scan barcode or enter manually..."
-              autofocus
-            />
-            <input
-              id="token"
-              type="text"
-              placeholder="Ingest Token"
-              value="changeme"
-            />
-            <button type="submit">Add to Tasks</button>
-            <div class="form-hint">
-              💡 Use your USB scanner here — it types like a keyboard and
-              submits automatically
-            </div>
-          </form>
-          <div id="msg"></div>
-        </div>
-
         <div class="card camera-card">
-          <h3>📷 Camera Scanner</h3>
+          <h3>📷 Unified Camera Scanner</h3>
           <p style="margin-bottom: 12px; line-height: 1.6">
-            Use your device camera to scan barcodes when a USB scanner isn't
-            handy.
+            Choose whether to capture barcodes or extract document text, then start the camera.
           </p>
-          <button type="button" id="camera-toggle">Start camera</button>
+          <label for="scanner-mode" style="font-weight: 600; color: #4a5568"
+            >Mode</label
+          >
+          <select id="scanner-mode">
+            <option value="barcode" selected>Barcode → Google Tasks</option>
+            <option value="ocr">Document OCR</option>
+          </select>
+          <input
+            id="token"
+            type="text"
+            placeholder="Ingest Token"
+            value="changeme"
+            style="margin-top: 12px"
+          />
+          <button type="button" id="camera-toggle" style="margin-top: 12px">
+            Start camera
+          </button>
+          <button
+            type="button"
+            id="camera-capture"
+            class="clear-button hidden"
+            style="margin-top: 12px"
+          >
+            Capture frame for OCR
+          </button>
           <video
             id="camera-stream"
             class="camera-video hidden"
@@ -468,12 +488,43 @@
             muted
           ></video>
           <div id="camera-status" class="camera-status info">
-            Camera idle. Tap “Start camera” to begin.
+            Camera idle. Select a mode and tap “Start camera”.
           </div>
+          <div id="msg"></div>
+        </div>
+
+        <div class="card hidden" id="ocr-card">
+          <h3>📝 Image OCR</h3>
+          <p style="margin-bottom: 12px; line-height: 1.6">
+            Upload a receipt or label photo or capture a live frame to extract text with Tesseract OCR.
+            Great for quick notes or manual item entry.
+          </p>
+          <form id="ocr-form" class="ocr-form">
+            <input type="file" id="ocr-file" accept="image/*" />
+            <select id="ocr-language">
+              <option value="eng" selected>English (eng)</option>
+              <option value="nld">Dutch (nld)</option>
+              <option value="deu">German (deu)</option>
+            </select>
+            <div class="ocr-actions">
+              <button type="submit">Upload &amp; Extract</button>
+              <button type="button" id="ocr-camera-btn" class="clear-button">
+                Capture from camera
+              </button>
+            </div>
+          </form>
+          <div id="ocr-status" class="camera-status info">
+            Select an image to get started.
+          </div>
+          <textarea
+            id="ocr-output"
+            readonly
+            placeholder="Recognized text will appear here..."
+          ></textarea>
         </div>
 
         <!-- Recent Scans Card -->
-        <div class="card recent-scans">
+        <div class="card recent-scans" id="recent-card">
           <div
             style="
               display: flex;
@@ -514,8 +565,6 @@
 
     <script type="module">
       window.addEventListener("DOMContentLoaded", () => {
-        const form = document.getElementById("f");
-        const codeInput = document.getElementById("code");
         const tokenInput = document.getElementById("token");
         const messageEl = document.getElementById("msg");
         const tbody = document.querySelector("#t tbody");
@@ -525,6 +574,15 @@
         const cameraToggle = document.getElementById("camera-toggle");
         const cameraStatus = document.getElementById("camera-status");
         const cameraVideo = document.getElementById("camera-stream");
+        const cameraCaptureBtn = document.getElementById("camera-capture");
+        const modeSelect = document.getElementById("scanner-mode");
+        const recentCard = document.getElementById("recent-card");
+        const ocrCard = document.getElementById("ocr-card");
+        const ocrForm = document.getElementById("ocr-form");
+        const ocrFileInput = document.getElementById("ocr-file");
+        const ocrLangSelect = document.getElementById("ocr-language");
+        const ocrStatus = document.getElementById("ocr-status");
+        const ocrOutput = document.getElementById("ocr-output");
         let cameraRunning = false;
         let cameraStream = null;
         let cameraDetector = null;
@@ -538,6 +596,7 @@
           "itf",
           "qr_code",
         ];
+        let currentMode = modeSelect ? modeSelect.value : "barcode";
 
         function displayStatus(el, state, text) {
           if (!el) return;
@@ -567,19 +626,17 @@
           try {
             const res = await fetch("/recent");
             const data = await res.json();
-            if (data.length === 0) {
+            if (!Array.isArray(data) || data.length === 0) {
               tbody.innerHTML =
                 '<tr><td colspan="3" class="empty-state"><div>No scans yet. Start scanning to see items here!</div></td></tr>';
-            } else {
-              tbody.innerHTML = data
-                .map(
-                  (x) =>
-                    `<tr><td>${x.when}</td><td>${
-                      x.title || "—"
-                    }</td><td class="code-cell">${x.code}</td></tr>`
-                )
-                .join("");
+              return;
             }
+            tbody.innerHTML = data
+              .map(
+                (x) =>
+                  `<tr><td>${x.when}</td><td>${x.title || "—"}</td><td class="code-cell">${x.code}</td></tr>`
+              )
+              .join("");
           } catch (err) {
             console.error("Failed to refresh recent scans", err);
           }
@@ -623,8 +680,7 @@
             }
             if (activeListTitle) {
               const sel = tasklistSelect.options[tasklistSelect.selectedIndex];
-              activeListTitle.textContent =
-                data.title || (sel ? sel.textContent : "");
+              activeListTitle.textContent = data.title || (sel ? sel.textContent : "");
             }
             if (messageEl) {
               displayStatus(
@@ -653,11 +709,7 @@
           if (!target) return false;
           const token = tokenInput ? tokenInput.value.trim() : "";
           if (!token) {
-            displayStatus(
-              target,
-              "err",
-              "✗ Enter the ingest token before scanning."
-            );
+            displayStatus(target, "err", "✗ Enter the ingest token before scanning.");
             return false;
           }
           try {
@@ -670,7 +722,7 @@
               body: JSON.stringify({ code, token }),
             });
             const data = await res.json();
-            const ok = res.ok;
+            const ok = res.ok && data.ok;
             const prefix = ok ? "✓ " : "✗ ";
             displayStatus(
               target,
@@ -686,40 +738,155 @@
             return ok;
           } catch (err) {
             console.error("Failed to submit scan", err);
-            displayStatus(
-              target,
-              "err",
-              "✗ " + (err.message || "Unable to submit scan")
-            );
+            displayStatus(target, "err", "✗ " + (err.message || "Unable to submit scan"));
             return false;
           }
         }
 
-        async function submitScan(e) {
+        function resolveOcrLanguage() {
+          if (!ocrLangSelect) return "eng";
+          if (ocrLangSelect.value) return ocrLangSelect.value;
+          if (
+            ocrLangSelect.options &&
+            ocrLangSelect.options[ocrLangSelect.selectedIndex]
+          ) {
+            return ocrLangSelect.options[ocrLangSelect.selectedIndex].value;
+          }
+          return "eng";
+        }
+
+        async function runOcrWithBlob(blob) {
+          if (!tokenInput || !ocrStatus) return;
+          const token = tokenInput.value.trim();
+          if (!token) {
+            displayStatus(ocrStatus, "err", "⚠️ Enter the ingest token before running OCR.");
+            return;
+          }
+          if (!blob) {
+            displayStatus(ocrStatus, "err", "⚠️ No image provided.");
+            return;
+          }
+          const formData = new FormData();
+          formData.append("image", blob, "capture.png");
+          formData.append("language", resolveOcrLanguage());
+          formData.append("token", token);
+
+          displayStatus(ocrStatus, "info", "Processing image…");
+          if (ocrOutput) ocrOutput.value = "";
+
+          try {
+            const res = await fetch("/ocr", {
+              method: "POST",
+              headers: { "X-Ingest-Token": token },
+              body: formData,
+            });
+            const data = await res.json();
+            if (!res.ok || !data.ok) {
+              throw new Error(data.message || "OCR failed");
+            }
+            displayStatus(ocrStatus, "ok", "✓ Text extracted successfully");
+            if (ocrOutput) {
+              ocrOutput.value = (data.text && data.text.trim()) || "(No text detected)";
+            }
+          } catch (err) {
+            console.error("OCR request failed", err);
+            displayStatus(
+              ocrStatus,
+              "err",
+              "✗ " + (err.message || "Unable to process image")
+            );
+          }
+        }
+
+        async function submitOcr(e) {
           if (e) {
             e.preventDefault();
             e.stopPropagation();
           }
-          if (!codeInput || !messageEl) return;
-          const code = codeInput.value.trim();
-          if (!code) {
+          if (!ocrFileInput || !ocrStatus) return;
+          const file = ocrFileInput.files && ocrFileInput.files[0];
+          if (!file) {
+            displayStatus(ocrStatus, "err", "⚠️ Choose an image to upload.");
+            return;
+          }
+          await runOcrWithBlob(file);
+          ocrFileInput.value = "";
+        }
+
+        async function captureOcrFromCamera() {
+          if (!ocrStatus) return;
+          if (!cameraRunning || !cameraVideo || !cameraVideo.srcObject) {
             displayStatus(
-              messageEl,
+              ocrStatus,
               "err",
-              "⚠️ Please scan or type a code first"
+              "Start the camera scanner before capturing."
             );
             return;
           }
-          const ok = await postScan(code, messageEl);
-          if (ok) {
-            codeInput.value = "";
-            codeInput.focus();
+          const width = cameraVideo.videoWidth || 640;
+          const height = cameraVideo.videoHeight || 480;
+          if (!width || !height) {
+            displayStatus(
+              ocrStatus,
+              "err",
+              "Camera feed not ready yet. Please wait a moment."
+            );
+            return;
           }
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(cameraVideo, 0, 0, width, height);
+          const blob = await new Promise((resolve) =>
+            canvas.toBlob(resolve, "image/png")
+          );
+          if (!blob) {
+            displayStatus(ocrStatus, "err", "Unable to capture camera frame.");
+            return;
+          }
+          await runOcrWithBlob(blob);
         }
 
         function hasSecureCameraOrigin() {
           if (window.isSecureContext) return true;
           return ["localhost", "127.0.0.1"].includes(window.location.hostname);
+        }
+
+        function applyModeLayout() {
+          const showRecent = currentMode === "barcode";
+          if (recentCard) recentCard.classList.toggle("hidden", !showRecent);
+          if (ocrCard) ocrCard.classList.toggle("hidden", showRecent);
+          if (cameraCaptureBtn) {
+            cameraCaptureBtn.classList.toggle("hidden", currentMode !== "ocr");
+          }
+          const statusText = showRecent
+            ? "Camera idle. Start scanning barcodes to add tasks."
+            : "Camera idle. Capture a frame to extract text.";
+          displayStatus(cameraStatus, "info", statusText);
+        }
+
+        function stopCamera(reason = "Camera stopped.") {
+          if (cameraFrameId) {
+            cancelAnimationFrame(cameraFrameId);
+            cameraFrameId = null;
+          }
+          if (cameraStream) {
+            cameraStream.getTracks().forEach((track) => track.stop());
+            cameraStream = null;
+          }
+          cameraSeen.clear();
+          if (cameraVideo) {
+            cameraVideo.pause();
+            cameraVideo.srcObject = null;
+            cameraVideo.classList.add("hidden");
+          }
+          if (cameraToggle) {
+            cameraToggle.textContent = "Start camera";
+            cameraToggle.classList.remove("active");
+          }
+          displayStatus(cameraStatus, "info", reason);
+          cameraRunning = false;
         }
 
         async function startCamera() {
@@ -744,7 +911,7 @@
             );
             return;
           }
-          if (!("BarcodeDetector" in window)) {
+          if (currentMode === "barcode" && !("BarcodeDetector" in window)) {
             displayStatus(
               cameraStatus,
               "err",
@@ -762,10 +929,8 @@
           }
           cameraToggle.disabled = true;
           try {
-            if (!cameraDetector) {
-              cameraDetector = new BarcodeDetector({
-                formats: BARCODE_FORMATS,
-              });
+            if (currentMode === "barcode" && !cameraDetector) {
+              cameraDetector = new BarcodeDetector({ formats: BARCODE_FORMATS });
             }
             cameraStream = await navigator.mediaDevices.getUserMedia({
               video: { facingMode: "environment" },
@@ -784,9 +949,13 @@
             displayStatus(
               cameraStatus,
               "info",
-              "Camera active. Scan a barcode to send it."
+              currentMode === "barcode"
+                ? "Camera active. Scan a barcode to send it."
+                : "Camera active. Tap capture to extract text."
             );
-            cameraFrameId = requestAnimationFrame(scanFrame);
+            if (currentMode === "barcode") {
+              cameraFrameId = requestAnimationFrame(scanFrame);
+            }
           } catch (err) {
             console.error("Failed to start camera", err);
             displayStatus(
@@ -794,53 +963,15 @@
               "err",
               err.message || "Unable to access camera."
             );
-            if (cameraStream) {
-              cameraStream.getTracks().forEach((track) => track.stop());
-              cameraStream = null;
-            }
-            cameraRunning = false;
-            cameraSeen.clear();
-            if (cameraVideo) {
-              cameraVideo.pause();
-              cameraVideo.srcObject = null;
-              cameraVideo.classList.add("hidden");
-            }
-            if (cameraToggle) {
-              cameraToggle.textContent = "Start camera";
-              cameraToggle.classList.remove("active");
-            }
+            stopCamera("Camera failed to start.");
           } finally {
             cameraToggle.disabled = false;
           }
         }
 
-        function stopCamera() {
-          if (cameraFrameId) {
-            cancelAnimationFrame(cameraFrameId);
-            cameraFrameId = null;
-          }
-          if (cameraStream) {
-            cameraStream.getTracks().forEach((track) => track.stop());
-            cameraStream = null;
-          }
-          cameraSeen.clear();
-          if (cameraVideo) {
-            cameraVideo.pause();
-            cameraVideo.srcObject = null;
-            cameraVideo.classList.add("hidden");
-          }
-          if (cameraToggle) {
-            cameraToggle.textContent = "Start camera";
-            cameraToggle.classList.remove("active");
-          }
-          if (cameraStatus) {
-            displayStatus(cameraStatus, "info", "Camera stopped.");
-          }
-          cameraRunning = false;
-        }
-
         async function scanFrame() {
-          if (!cameraRunning || !cameraDetector) return;
+          if (!cameraRunning || currentMode !== "barcode" || !cameraDetector)
+            return;
           try {
             const barcodes = await cameraDetector.detect(cameraVideo);
             for (const barcode of barcodes) {
@@ -849,9 +980,9 @@
               cameraSeen.add(code);
               const ok = await postScan(code, cameraStatus, {
                 onSuccess: () => {
-                  if (cameraRunning) {
+                  if (cameraRunning && currentMode === "barcode") {
                     setTimeout(() => {
-                      if (cameraRunning) {
+                      if (cameraRunning && currentMode === "barcode") {
                         displayStatus(
                           cameraStatus,
                           "info",
@@ -871,31 +1002,33 @@
           } catch (err) {
             console.error("Barcode detection failed", err);
           }
-          if (cameraRunning) {
+          if (cameraRunning && currentMode === "barcode") {
             cameraFrameId = requestAnimationFrame(scanFrame);
           }
         }
 
-        // Initial data fetches
+        function handleModeChange() {
+          const selected = modeSelect ? modeSelect.value : "barcode";
+          if (selected === currentMode) return;
+          currentMode = selected;
+          stopCamera("Mode changed; camera stopped.");
+          applyModeLayout();
+        }
+
+        // Initial bootstrapping
+        applyModeLayout();
         refreshRecent();
         setInterval(refreshRecent, 1500);
-
         if (tasklistSelect) {
           loadTasklists();
           tasklistSelect.addEventListener("change", switchTasklist);
         }
-
-        if (codeInput) {
-          codeInput.focus();
-        }
-
         if (clearButton) {
           clearButton.addEventListener("click", async () => {
             try {
               const res = await fetch("/recent/clear", { method: "POST" });
-              if (!res.ok) throw new Error("Request failed");
               const data = await res.json();
-              if (!data.ok) throw new Error("Unable to clear list");
+              if (!res.ok || !data.ok) throw new Error("Unable to clear list");
               refreshRecent();
               if (messageEl) {
                 displayStatus(messageEl, "ok", "✓ Recent list cleared");
@@ -912,11 +1045,6 @@
             }
           });
         }
-
-        if (form) {
-          form.addEventListener("submit", submitScan);
-        }
-
         if (cameraToggle) {
           cameraToggle.addEventListener("click", async () => {
             if (cameraRunning) {
@@ -926,15 +1054,20 @@
             }
           });
         }
-
+        if (modeSelect) {
+          modeSelect.addEventListener("change", handleModeChange);
+        }
+        if (ocrForm) {
+          ocrForm.addEventListener("submit", submitOcr);
+        }
+        if (cameraCaptureBtn) {
+          cameraCaptureBtn.addEventListener("click", captureOcrFromCamera);
+        }
         window.addEventListener("beforeunload", () => {
-          if (cameraRunning) {
-            stopCamera();
-          }
+          if (cameraRunning) stopCamera();
         });
-
         document.addEventListener("visibilitychange", () => {
-          if (document.hidden) {
+          if (document.hidden && cameraRunning) {
             stopCamera();
           }
         });

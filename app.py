@@ -14,6 +14,20 @@ import requests
 import signal
 import subprocess
 
+from PIL import Image
+import importlib
+import pkgutil
+
+if not hasattr(pkgutil, "find_loader"):
+    from importlib.machinery import PathFinder
+
+    def _compat_find_loader(fullname):
+        spec = PathFinder.find_spec(fullname)
+        return spec.loader if spec else None
+
+    pkgutil.find_loader = _compat_find_loader  # type: ignore[attr-defined]
+import pytesseract
+
 import logging
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -194,6 +208,20 @@ def log_scan(code, title=None):
     del RECENT[200:]  # keep last 200
 
 
+def extract_ingest_token(preloaded_json=None) -> str:
+    """Return the ingest token from JSON, form data, headers, or query params."""
+    if preloaded_json and preloaded_json.get("token"):
+        return preloaded_json.get("token")
+    if request.form.get("token"):
+        return request.form.get("token")
+    header_token = request.headers.get("X-Ingest-Token")
+    if header_token:
+        return header_token
+    if request.args.get("token"):
+        return request.args.get("token")
+    return None
+
+
 # ---------- Routes ----------
 
 
@@ -247,8 +275,7 @@ def select_tasklist():
 @app.route("/scan", methods=["POST"])
 def scan():
     data = request.get_json(silent=True) or {}
-    # Accept token from JSON body, header, or query param for convenience
-    token = data.get("token") or request.headers.get("X-Ingest-Token") or request.args.get("token")
+    token = extract_ingest_token(data)
     if token != INGEST_TOKEN:
         logger.info(
             "Auth failed from %s: provided token len=%s (expected non-empty). Hint: set INGEST_TOKEN in .env and enter the same value on the dashboard.",
@@ -294,6 +321,36 @@ def clear_recent():
     LAST_SEEN.clear()
     return jsonify({"ok": True})
 
+
+@app.route("/ocr", methods=["POST"])
+def ocr():
+    """Accept an uploaded image and return OCR text."""
+    token = extract_ingest_token()
+    if token != INGEST_TOKEN:
+        abort(401)
+
+    if "image" not in request.files:
+        return jsonify({"ok": False, "message": "Missing image upload"}), 400
+
+    file = request.files["image"]
+    if not file or file.filename == "":
+        return jsonify({"ok": False, "message": "Invalid file"}), 400
+
+    try:
+        image = Image.open(file.stream).convert("RGB")
+    except Exception:
+        logger.exception("Unable to open uploaded file for OCR")
+        return jsonify({"ok": False, "message": "Unable to read image"}), 400
+
+    language = request.form.get("language") or "eng"
+    config = request.form.get("tesseract_config") or ""
+    try:
+        text = pytesseract.image_to_string(image, lang=language, config=config).strip()
+    except pytesseract.TesseractError as exc:
+        logger.exception("Tesseract OCR failed")
+        return jsonify({"ok": False, "message": f"OCR failed: {exc}"}), 500
+    return jsonify({"ok": True, "text": text, "language": language})
+
 # expose version everywhere in templates
 @app.context_processor
 def inject_version():
@@ -319,5 +376,5 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=PORT,
         debug=True,
-        ssl_context=("Giuseppes-MacBook-Air.local+3.pem", "Giuseppes-MacBook-Air.local+3-key.pem"),
+        ssl_context=("local.pem", "local-key.pem"),
     )

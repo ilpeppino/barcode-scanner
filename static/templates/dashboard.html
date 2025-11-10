@@ -183,14 +183,53 @@
         color: #4338ca;
       }
 
-      video {
-        width: min(100%, 420px);
-        aspect-ratio: 9 / 16;
+      .camera-wrap {
+        position: relative;
+        width: min(100%, 480px);
         margin: 24px auto 0;
-        border-radius: 22px;
+      }
+
+      .camera-wrap::before,
+      .camera-wrap::after {
+        content: "";
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        pointer-events: none;
+        border: 2px dashed rgba(255, 255, 255, 0.45);
+        border-radius: 18px;
+        width: 70%;
+        height: 75%;
+      }
+
+      .camera-wrap::after {
+        width: 40%;
+        height: 20%;
+        border-radius: 12px;
+      }
+
+      .camera-wrap.portrait::before {
+        width: 60%;
+        height: 82%;
+      }
+
+      .camera-wrap.portrait::after {
+        width: 45%;
+        height: 28%;
+      }
+
+      video {
+        width: 100%;
+        aspect-ratio: 16 / 9;
+        border-radius: 24px;
         background: #0d1b2a;
         object-fit: cover;
         display: block;
+      }
+
+      video.portrait {
+        aspect-ratio: 9 / 16;
       }
 
       video.hidden {
@@ -364,7 +403,9 @@
             Capture Frame
           </button>
 
-          <video id="camera-stream" class="hidden" playsinline muted></video>
+          <div class="camera-wrap hidden" id="camera-wrap">
+            <video id="camera-stream" playsinline muted></video>
+          </div>
 
           <div id="camera-status" class="status-line info">
             Camera idle. Select a mode to begin.
@@ -423,6 +464,7 @@
         const clearButton = document.getElementById("clear-recent-btn");
         const captureBtn = document.getElementById("capture-btn");
         const cameraStatus = document.getElementById("camera-status");
+        const cameraWrap = document.getElementById("camera-wrap");
         const cameraVideo = document.getElementById("camera-stream");
         const modeButtons = document.querySelectorAll("[data-mode]");
         const recentCard = document.getElementById("recent-card");
@@ -434,6 +476,9 @@
         let cameraRunning = false;
         let cameraStream = null;
         let cameraDetector = null;
+        let barcodeFrameId = null;
+        let lastBarcodeValue = "";
+        let lastBarcodeTime = 0;
         let currentMode = "barcode";
         const BARCODE_FORMATS = [
           "ean_13",
@@ -561,6 +606,7 @@
           const isBarcode = currentMode === "barcode";
           if (recentCard) recentCard.classList.toggle("hidden", !isBarcode);
           if (ocrCard) ocrCard.classList.toggle("hidden", isBarcode);
+          if (captureBtn) captureBtn.classList.toggle("hidden", isBarcode);
           displayStatus(
             cameraStatus,
             "info",
@@ -571,18 +617,28 @@
           modeButtons.forEach((btn) =>
             btn.classList.toggle("active", btn.dataset.mode === currentMode)
           );
+          if (cameraVideo) {
+            cameraVideo.classList.toggle("portrait", !isBarcode);
+          }
+          if (cameraWrap) {
+            cameraWrap.classList.toggle("portrait", !isBarcode);
+          }
         }
 
         function stopCamera(reason = "Camera stopped.") {
+          if (barcodeFrameId) {
+            cancelAnimationFrame(barcodeFrameId);
+            barcodeFrameId = null;
+          }
           if (cameraStream) {
             cameraStream.getTracks().forEach((track) => track.stop());
             cameraStream = null;
           }
           cameraRunning = false;
-          if (cameraVideo) {
+          if (cameraVideo && cameraWrap) {
             cameraVideo.pause();
             cameraVideo.srcObject = null;
-            cameraVideo.classList.add("hidden");
+            cameraWrap.classList.add("hidden");
           }
           if (captureBtn) captureBtn.disabled = true;
           displayStatus(cameraStatus, "info", reason);
@@ -605,15 +661,25 @@
             );
           }
           if (captureBtn) captureBtn.disabled = true;
-          cameraStream = await navigator.mediaDevices.getUserMedia({
-            video: {
-              facingMode: { ideal: "environment" },
-              width: { ideal: 720 },
-              height: { ideal: 1280 },
-            },
-          });
+          const constraints =
+            currentMode === "barcode"
+              ? {
+                  video: {
+                    facingMode: { ideal: "environment" },
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 },
+                  },
+                }
+              : {
+                  video: {
+                    facingMode: { ideal: "environment" },
+                    width: { ideal: 720 },
+                    height: { ideal: 1280 },
+                  },
+                };
+          cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
           cameraVideo.srcObject = cameraStream;
-          cameraVideo.classList.remove("hidden");
+          if (cameraWrap) cameraWrap.classList.remove("hidden");
           try {
             await cameraVideo.play();
           } catch (err) {
@@ -625,9 +691,12 @@
             cameraStatus,
             "info",
             currentMode === "barcode"
-              ? "Camera active. Capture a frame to add a task."
+              ? "Camera active. Align a barcode within the guides."
               : "Camera active. Capture a frame to extract text."
           );
+          if (currentMode === "barcode") {
+            startBarcodeLoop();
+          }
         }
 
         async function captureFrame() {
@@ -661,19 +730,25 @@
           if (!cameraDetector) {
             cameraDetector = new BarcodeDetector({ formats: BARCODE_FORMATS });
           }
-          const { canvas } = await captureFrame();
-          const barcodes = await cameraDetector.detect(canvas);
+          const barcodes = await cameraDetector.detect(cameraVideo);
           if (!barcodes.length) {
-            throw new Error("No barcode detected in this frame.");
+            return false;
           }
           const code = (barcodes[0].rawValue || "").trim();
           if (!code) {
-            throw new Error("Detected barcode is empty. Try again.");
+            return false;
           }
+          const now = Date.now();
+          if (code === lastBarcodeValue && now - lastBarcodeTime < 2000) {
+            return false;
+          }
+          lastBarcodeValue = code;
+          lastBarcodeTime = now;
           const ok = await postScan(code, cameraStatus);
           if (!ok) {
             throw new Error("Failed to process barcode.");
           }
+          return true;
         }
 
         async function processOcrCapture() {
@@ -682,6 +757,7 @@
         }
 
         async function handleCaptureClick() {
+          if (currentMode === "barcode") return; // button hidden anyway
           if (!cameraRunning) {
             try {
               await startCamera();
@@ -692,23 +768,47 @@
           }
           if (captureBtn) captureBtn.disabled = true;
           try {
-            if (currentMode === "barcode") {
-              await processBarcodeCapture();
-            } else {
-              await processOcrCapture();
-            }
+            await processOcrCapture();
           } catch (err) {
-            const target = currentMode === "barcode" ? cameraStatus : ocrStatus;
-            displayStatus(target, "err", err.message || "Capture failed.");
+            displayStatus(
+              ocrStatus,
+              "err",
+              err.message || "Capture failed."
+            );
           } finally {
             if (captureBtn) captureBtn.disabled = false;
           }
         }
 
+        function startBarcodeLoop() {
+          const tick = async () => {
+            if (!cameraRunning || currentMode !== "barcode") {
+              return;
+            }
+            try {
+              await processBarcodeCapture();
+            } catch (err) {
+              if (err && err.message) {
+                console.debug("Barcode detection", err.message);
+              }
+            }
+            barcodeFrameId = requestAnimationFrame(tick);
+          };
+          if (barcodeFrameId) cancelAnimationFrame(barcodeFrameId);
+          barcodeFrameId = requestAnimationFrame(tick);
+        }
+
         function handleModeChange(mode) {
           if (mode === currentMode) return;
+          const wasRunning = cameraRunning;
+          stopCamera("Mode changed; camera stopped.");
           currentMode = mode;
           applyModeLayout();
+          if (wasRunning) {
+            startCamera().catch((err) =>
+              displayStatus(cameraStatus, "err", err.message)
+            );
+          }
         }
 
         refreshRecent();

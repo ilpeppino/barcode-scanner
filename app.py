@@ -1,7 +1,7 @@
 import os
 from datetime import datetime
 
-from flask import Flask, request, jsonify, render_template, abort
+from flask import Flask, request, jsonify, render_template
 from dotenv import load_dotenv
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -15,7 +15,6 @@ import signal
 import subprocess
 
 from PIL import Image
-import importlib
 import pkgutil
 
 if not hasattr(pkgutil, "find_loader"):
@@ -37,7 +36,6 @@ load_dotenv()
 
 SCOPES = ["https://www.googleapis.com/auth/tasks"]
 PORT = int(os.getenv("PORT", "5000"))
-INGEST_TOKEN = os.getenv("INGEST_TOKEN", "changeme")
 TASKLIST_ID = os.getenv("TASKLIST_ID", "").strip()
 TASKLIST_TITLE = os.getenv("TASKLIST_TITLE", "").strip()
 
@@ -208,20 +206,6 @@ def log_scan(code, title=None):
     del RECENT[200:]  # keep last 200
 
 
-def extract_ingest_token(preloaded_json=None) -> str:
-    """Return the ingest token from JSON, form data, headers, or query params."""
-    if preloaded_json and preloaded_json.get("token"):
-        return preloaded_json.get("token")
-    if request.form.get("token"):
-        return request.form.get("token")
-    header_token = request.headers.get("X-Ingest-Token")
-    if header_token:
-        return header_token
-    if request.args.get("token"):
-        return request.args.get("token")
-    return None
-
-
 # ---------- Routes ----------
 
 
@@ -231,7 +215,6 @@ def home():
     return render_template(
         "dashboard.html",
         active_list_title=get_tasklist_title(),
-        ingest_token=INGEST_TOKEN,
     )
 
 @app.route("/recent")
@@ -275,14 +258,6 @@ def select_tasklist():
 @app.route("/scan", methods=["POST"])
 def scan():
     data = request.get_json(silent=True) or {}
-    token = extract_ingest_token(data)
-    if token != INGEST_TOKEN:
-        logger.info(
-            "Auth failed from %s: provided token len=%s (expected non-empty). Hint: set INGEST_TOKEN in .env and enter the same value on the dashboard.",
-            request.remote_addr,
-            len(token) if token else 0,
-        )
-        abort(401)
 
     raw = (data.get("code") or "").strip()
     logger.info("Received scan request from %s: %s", request.remote_addr, raw)
@@ -325,10 +300,6 @@ def clear_recent():
 @app.route("/ocr", methods=["POST"])
 def ocr():
     """Accept an uploaded image and return OCR text."""
-    token = extract_ingest_token()
-    if token != INGEST_TOKEN:
-        abort(401)
-
     if "image" not in request.files:
         return jsonify({"ok": False, "message": "Missing image upload"}), 400
 

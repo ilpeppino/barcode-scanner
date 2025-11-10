@@ -5,7 +5,9 @@
 - [ ] **Explore lightweight NAS-side OCR integration** (e.g., Tesseract in a sidecar container) and expose a `/ocr` endpoint.
 - [x] **Add build version to the web app footer** using a Flask `app_version` context processor (reads `IMAGE_TAG`).
 - [x] **Document Android CA installation and HTTPS trust config** for new devices (mkcert CA → camera works).
-- [ ] **Optional Pi-hole cleanup/automation** scripts (enable/disable, backups, updates).
+- [ ] **Optional Pi-hole cleanup/automation** scripts (enable/disable, backups, updates)
+- [ ] **Camera portrait mode**
+- [ ] **One section with selector**
 
 ### New
 

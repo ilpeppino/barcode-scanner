@@ -1,547 +1,377 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
   <head>
+    <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="icon" href="/static/barcode_favicon.ico" />
-    <title>Barcode Scanner → Google Tasks</title>
+    <title>Unified Scanner</title>
     <style>
-      * {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
+      :root {
+        font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
+          Roboto, sans-serif;
+        color: #1a202c;
       }
 
       body {
-        font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
-          Roboto, sans-serif;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         min-height: 100vh;
-        padding: 20px;
-        color: #2d3748;
-      }
-
-      .container {
-        max-width: 1400px;
-        margin: 0 auto;
-      }
-
-      /* Header */
-      .header {
-        background: white;
-        border-radius: 20px;
-        padding: 24px 32px;
-        margin-bottom: 24px;
-        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        flex-wrap: wrap;
-        gap: 20px;
-      }
-
-      .header-left h1 {
-        font-size: 28px;
-        font-weight: 700;
-        color: #1a202c;
-        margin-bottom: 4px;
+        margin: 0;
+        background: linear-gradient(135deg, #6d7dfc 0%, #8b5cf6 60%, #9333ea 100%);
         display: flex;
         align-items: center;
-        gap: 12px;
+        justify-content: center;
+        padding: 24px;
+        color: inherit;
       }
 
-      .header-left h1::before {
-        content: "📦";
+      .shell {
+        width: min(960px, 100%);
+      }
+
+      .scanner-card {
+        background: #fff;
+        border-radius: 28px;
+        box-shadow: 0 15px 70px rgba(22, 6, 75, 0.25);
+        overflow: hidden;
+      }
+
+      .scanner-card header {
+        padding: 40px 36px 24px;
+        background: linear-gradient(135deg, #7c8cff 0%, #8a63f8 100%);
+        color: #fff;
+        text-align: center;
+      }
+
+      .scanner-card header h1 {
+        margin: 0;
         font-size: 32px;
-      }
-
-      .active-list {
-        color: #667eea;
-        font-size: 16px;
-        font-weight: 500;
-      }
-
-      .header-controls {
-        display: flex;
-        align-items: center;
-        gap: 16px;
-        flex-wrap: wrap;
-      }
-
-      .tasklist-selector {
-        display: flex;
+        font-weight: 700;
+        display: inline-flex;
         align-items: center;
         gap: 10px;
       }
 
-      .tasklist-selector label {
-        font-size: 14px;
-        color: #718096;
-        font-weight: 500;
+      .scanner-card header p {
+        margin: 8px 0 0;
+        font-size: 16px;
+        opacity: 0.9;
       }
 
-      select {
-        padding: 10px 16px;
+      .scanner-body {
+        padding: 32px 36px 40px;
+      }
+
+      .list-select {
+        margin-top: 18px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        color: #4a5568;
+        font-weight: 600;
+      }
+
+      .list-select select {
+        flex: 1;
         border: 2px solid #e2e8f0;
-        border-radius: 10px;
-        font-size: 14px;
-        font-weight: 500;
+        border-radius: 14px;
+        padding: 12px;
+        font-size: 15px;
+        font-weight: 600;
+        background: #fff;
         color: #2d3748;
-        background: white;
-        cursor: pointer;
-        transition: all 0.2s;
         outline: none;
       }
 
-      select:hover {
-        border-color: #667eea;
+      .list-select select:focus {
+        border-color: #7c8cff;
+        box-shadow: 0 0 0 3px rgba(124, 140, 255, 0.2);
       }
 
-      select:focus {
-        border-color: #667eea;
-        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+      .token-input {
+        margin-top: 20px;
+        width: 100%;
+        border: 2px solid #e2e8f0;
+        border-radius: 14px;
+        padding: 14px 16px;
+        font-size: 15px;
+        outline: none;
+        transition: border 0.2s, box-shadow 0.2s;
       }
 
-      /* Main Grid */
-      .main-grid {
+      .token-input:focus {
+        border-color: #7c8cff;
+        box-shadow: 0 0 0 3px rgba(124, 140, 255, 0.2);
+      }
+
+      .mode-toggle {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-        gap: 24px;
-        margin-bottom: 24px;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 16px;
+        margin-top: 24px;
       }
 
-      .card {
-        background: white;
-        border-radius: 20px;
-        padding: 28px;
-        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
-        transition: transform 0.2s, box-shadow 0.2s;
-      }
-
-      .card:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 15px 50px rgba(0, 0, 0, 0.15);
-      }
-
-      .card h3 {
-        font-size: 20px;
-        font-weight: 700;
-        color: #1a202c;
-        margin-bottom: 16px;
+      .mode-option {
+        border: none;
+        border-radius: 18px;
+        padding: 16px;
+        font-size: 16px;
+        font-weight: 600;
+        cursor: pointer;
+        background: #f6f8ff;
+        color: #4a5568;
         display: flex;
         align-items: center;
+        justify-content: center;
         gap: 10px;
+        transition: all 0.2s;
+        box-shadow: inset 0 0 0 2px rgba(124, 140, 255, 0.15);
       }
 
-      .card h3::before {
-        content: "";
-        width: 4px;
-        height: 24px;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        border-radius: 2px;
+      .mode-option span.icon {
+        font-size: 18px;
       }
 
-      /* Scanner Form */
-      button {
-        padding: 14px 24px;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
+      .mode-option.active {
+        background: linear-gradient(135deg, #6e7cfb 0%, #8659f5 100%);
+        color: #fff;
+        box-shadow: 0 10px 25px rgba(111, 95, 255, 0.35);
+      }
+
+      .primary-btn {
+        width: 100%;
+        margin-top: 24px;
         border: none;
-        border-radius: 12px;
-        font-size: 15px;
-        font-weight: 600;
+        border-radius: 18px;
+        padding: 16px;
+        font-size: 16px;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        color: #fff;
+        background: linear-gradient(135deg, #6e7cfb 0%, #8659f5 100%);
         cursor: pointer;
-        transition: all 0.2s;
-        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+        box-shadow: 0 12px 30px rgba(111, 95, 255, 0.35);
       }
 
-      .clear-button {
-        padding: 10px 18px;
-        border-radius: 10px;
-        border: 2px solid rgba(102, 126, 234, 0.3);
-        background: rgba(255, 255, 255, 0.8);
-        color: #4c51bf;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.2s;
+      .primary-btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
         box-shadow: none;
       }
 
-      .clear-button:hover {
-        border-color: #667eea;
-        background: white;
-        transform: translateY(-1px);
+      .primary-btn:not(:disabled):hover {
+        transform: translateY(-2px);
       }
 
-      .clear-button:active {
-        transform: translateY(0);
+      .secondary-btn {
+        margin-top: 14px;
+        background: transparent;
+        border: 2px solid rgba(124, 140, 255, 0.25);
+        color: #5a67d8;
+        border-radius: 14px;
+        font-weight: 600;
+        padding: 10px 16px;
+        cursor: pointer;
+        transition: border-color 0.2s, color 0.2s;
       }
 
-      .camera-card button {
-        margin-top: 12px;
-      }
-
-      .camera-card button.active {
-        background: linear-gradient(135deg, #f56565 0%, #c53030 100%);
-      }
-
-      .camera-video {
-        margin-top: 16px;
-        width: 100%;
-        max-height: 320px;
-        border-radius: 16px;
-        background: #1a202c;
-        display: block;
-        object-fit: cover;
-      }
-
-      .camera-video.hidden {
+      .secondary-btn.hidden {
         display: none;
       }
 
-      .camera-status {
+      .secondary-btn:hover {
+        border-color: rgba(124, 140, 255, 0.55);
+        color: #4338ca;
+      }
+
+      video {
+        width: 100%;
+        margin-top: 24px;
+        border-radius: 22px;
+        background: #0d1b2a;
+        max-height: 340px;
+        object-fit: cover;
+      }
+
+      video.hidden {
+        display: none;
+      }
+
+      .status-line {
         margin-top: 12px;
         font-size: 14px;
         color: #4a5568;
-        min-height: 1.2em;
+        min-height: 1.4em;
       }
 
-      .camera-status.ok {
-        color: #22543d;
+      .status-line.ok {
+        color: #047857;
       }
 
-      .camera-status.err {
-        color: #742a2a;
+      .status-line.err {
+        color: #c53030;
       }
 
-      .camera-status.info {
+      .status-line.info {
         color: #4a5568;
       }
 
-      button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
-      }
-
-      button:active {
-        transform: translateY(0);
-      }
-
-      .ocr-form {
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
-      }
-
-      .ocr-form input[type="file"] {
-        border: 2px dashed #c3dafe;
-        border-radius: 12px;
-        padding: 20px;
-        background: #faf5ff;
-        color: #4c51bf;
-        cursor: pointer;
-      }
-
-      #ocr-output {
-        width: 100%;
-        min-height: 160px;
-        border: 2px solid #e2e8f0;
-        border-radius: 12px;
-        padding: 14px;
-        font-family: "JetBrains Mono", "Courier New", monospace;
-        font-size: 14px;
-        resize: vertical;
-        background: #f7fafc;
-        color: #2d3748;
-      }
-
-      #ocr-status {
-        min-height: 1.2em;
-        font-size: 14px;
-      }
-
-      .ocr-actions {
-        display: flex;
-        gap: 12px;
-        flex-wrap: wrap;
-      }
-
-      .form-hint {
-        font-size: 13px;
-        color: #718096;
-        margin-top: 8px;
-        line-height: 1.5;
-      }
-
       #msg {
-        margin-top: 16px;
+        margin-top: 12px;
+        border-radius: 12px;
         padding: 12px 16px;
-        border-radius: 10px;
         font-size: 14px;
-        font-weight: 500;
+        font-weight: 600;
         display: none;
       }
 
       #msg.ok {
+        display: block;
         background: #c6f6d5;
         color: #22543d;
-        display: block;
-        animation: slideIn 0.3s ease-out;
       }
 
       #msg.err {
+        display: block;
         background: #fed7d7;
         color: #742a2a;
-        display: block;
-        animation: slideIn 0.3s ease-out;
       }
 
-      @keyframes slideIn {
-        from {
-          opacity: 0;
-          transform: translateY(-10px);
-        }
-        to {
-          opacity: 1;
-          transform: translateY(0);
-        }
+      .info-panel {
+        margin-top: 32px;
+        border-radius: 20px;
+        border: 2px solid #edf2f7;
+        padding: 20px;
+        background: #fff;
       }
 
-      /* Recent Scans Table */
-      .recent-scans {
-        grid-column: 1 / -1;
+      .info-panel.hidden {
+        display: none;
       }
 
-      .table-wrapper {
-        overflow-x: auto;
-        margin-top: 16px;
+      .info-panel h4 {
+        margin: 0 0 12px;
+        font-size: 18px;
+        color: #1a202c;
+      }
+
+      .empty-copy {
+        margin: 0;
+        color: #96a1b3;
+        font-weight: 500;
       }
 
       table {
         width: 100%;
-        border-collapse: separate;
-        border-spacing: 0;
+        border-collapse: collapse;
+      }
+
+      th,
+      td {
+        text-align: left;
+        padding: 12px 10px;
+        font-size: 14px;
       }
 
       thead {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      }
-
-      th {
-        padding: 16px;
-        text-align: left;
-        color: white;
-        font-weight: 600;
-        font-size: 14px;
+        color: #4a5568;
         text-transform: uppercase;
+        font-size: 12px;
         letter-spacing: 0.5px;
       }
 
-      th:first-child {
-        border-radius: 12px 0 0 0;
-      }
-
-      th:last-child {
-        border-radius: 0 12px 0 0;
-      }
-
-      tbody tr {
-        transition: background 0.2s;
-      }
-
-      tbody tr:hover {
-        background: #f7fafc;
-      }
-
-      td {
-        padding: 16px;
-        border-bottom: 1px solid #e2e8f0;
-        font-size: 14px;
-      }
-
-      tbody tr:last-child td {
-        border-bottom: none;
-      }
-
-      tbody tr:last-child td:first-child {
-        border-radius: 0 0 0 12px;
-      }
-
-      tbody tr:last-child td:last-child {
-        border-radius: 0 0 12px 0;
+      tbody tr + tr {
+        border-top: 1px solid #edf2f7;
       }
 
       .code-cell {
-        font-family: "Monaco", "Courier New", monospace;
+        font-family: "JetBrains Mono", "Courier New", monospace;
+        color: #5a67d8;
         font-weight: 600;
-        color: #667eea;
       }
 
-      /* Empty State */
-      .empty-state {
-        text-align: center;
-        padding: 40px 20px;
-        color: #718096;
-      }
-
-      .empty-state::before {
-        content: "📭";
-        font-size: 48px;
-        display: block;
+      #ocr-form {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
         margin-bottom: 12px;
       }
 
-      /* Responsive */
-      @media (max-width: 768px) {
-        .header {
-          padding: 20px;
-        }
+      #ocr-form input[type="file"],
+      #ocr-language {
+        flex: 1;
+        min-width: 200px;
+        border: 2px dashed #d6dcf4;
+        border-radius: 14px;
+        padding: 12px;
+        background: #f8f9ff;
+        font-weight: 600;
+        color: #4a5568;
+      }
 
-        .header-left h1 {
-          font-size: 22px;
-        }
+      #ocr-output {
+        width: 100%;
+        min-height: 180px;
+        border-radius: 16px;
+        border: 2px solid #e2e8f0;
+        padding: 14px;
+        font-family: "JetBrains Mono", "Courier New", monospace;
+        font-size: 14px;
+        background: #f7fafc;
+        resize: vertical;
+      }
 
-        .main-grid {
+      footer {
+        text-align: center;
+        margin-top: 18px;
+        opacity: 0.6;
+        font-size: 13px;
+      }
+
+      @media (max-width: 720px) {
+        .scanner-card header {
+          padding: 32px 20px 18px;
+        }
+        .scanner-body {
+          padding: 26px 20px 32px;
+        }
+        .mode-toggle {
           grid-template-columns: 1fr;
         }
-
-        .card {
-          padding: 20px;
-        }
-      }
-
-      /* Loading Animation */
-      @keyframes pulse {
-        0%,
-        100% {
-          opacity: 1;
-        }
-        50% {
-          opacity: 0.5;
-        }
-      }
-
-      .loading {
-        animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-      }
-
-      .hidden {
-        display: none !important;
       }
     </style>
   </head>
   <body>
-    <div class="container">
-      <!-- Header -->
-      <div class="header">
-        <div class="header-left">
-          <h1>Barcode Scanner</h1>
-          <div class="active-list">
-            Active List: <span id="active-list-title">My Tasks</span>
-          </div>
-        </div>
-        <div class="header-controls">
-          <div class="tasklist-selector">
-            <label for="tasklist-select">Task List</label>
-            <select id="tasklist-select">
-              <option>Loading...</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
-      <!-- Main Grid -->
-      <div class="main-grid">
-        <div class="card camera-card">
-          <h3>📷 Unified Camera Scanner</h3>
-          <p style="margin-bottom: 12px; line-height: 1.6">
-            Choose whether to capture barcodes or extract document text, then start the camera.
-          </p>
-          <label for="scanner-mode" style="font-weight: 600; color: #4a5568"
-            >Mode</label
-          >
-          <select id="scanner-mode">
-            <option value="barcode" selected>Barcode → Google Tasks</option>
-            <option value="ocr">Document OCR</option>
-          </select>
-          <input
-            id="token"
-            type="text"
-            placeholder="Ingest Token"
-            value="changeme"
-            style="margin-top: 12px"
-          />
-          <button type="button" id="camera-toggle" style="margin-top: 12px">
-            Start camera
-          </button>
-          <button
-            type="button"
-            id="camera-capture"
-            class="clear-button hidden"
-            style="margin-top: 12px"
-          >
-            Capture frame for OCR
-          </button>
-          <video
-            id="camera-stream"
-            class="camera-video hidden"
-            playsinline
-            muted
-          ></video>
-          <div id="camera-status" class="camera-status info">
-            Camera idle. Select a mode and tap “Start camera”.
-          </div>
-          <div id="msg"></div>
-        </div>
-
-        <div class="card hidden" id="ocr-card">
-          <h3>📝 Image OCR</h3>
-          <p style="margin-bottom: 12px; line-height: 1.6">
-            Upload a receipt or label photo or capture a live frame to extract text with Tesseract OCR.
-            Great for quick notes or manual item entry.
-          </p>
-          <form id="ocr-form" class="ocr-form">
-            <input type="file" id="ocr-file" accept="image/*" />
-            <select id="ocr-language">
-              <option value="eng" selected>English (eng)</option>
-              <option value="nld">Dutch (nld)</option>
-              <option value="deu">German (deu)</option>
-            </select>
-            <div class="ocr-actions">
-              <button type="submit">Upload &amp; Extract</button>
-              <button type="button" id="ocr-camera-btn" class="clear-button">
-                Capture from camera
-              </button>
-            </div>
-          </form>
-          <div id="ocr-status" class="camera-status info">
-            Select an image to get started.
-          </div>
-          <textarea
-            id="ocr-output"
-            readonly
-            placeholder="Recognized text will appear here..."
-          ></textarea>
-        </div>
-
-        <!-- Recent Scans Card -->
-        <div class="card recent-scans" id="recent-card">
-          <div
-            style="
-              display: flex;
-              align-items: center;
-              justify-content: space-between;
-              gap: 12px;
-            "
-          >
-            <h3 style="margin-bottom: 0">Recent Scans</h3>
-            <button id="clear-recent-btn" class="clear-button" type="button">
-              Clear list
+    <div class="shell">
+      <div class="scanner-card">
+        <header>
+          <h1>📱 Unified Scanner</h1>
+          <p>Scan barcodes or extract text from documents</p>
+        </header>
+        <div class="scanner-body">
+          <div class="mode-toggle" id="mode-toggle">
+            <button class="mode-option active" data-mode="barcode">
+              <span class="icon">📊</span>
+              <span>Barcode Scanner</span>
+            </button>
+            <button class="mode-option" data-mode="ocr">
+              <span class="icon">📄</span>
+              <span>Document OCR</span>
             </button>
           </div>
-          <p style="color: #718096; font-size: 14px; margin-top: 12px">
-            Latest activity from this session
-          </p>
-          <div class="table-wrapper">
+
+          <button id="capture-btn" class="primary-btn" disabled>
+            Capture Frame
+          </button>
+
+          <video id="camera-stream" class="hidden" playsinline muted></video>
+
+          <div id="camera-status" class="status-line info">
+            Camera idle. Select a mode to begin.
+          </div>
+          <div id="msg"></div>
+
+          <div class="info-panel" id="recent-card">
+            <h4>Recent Scans</h4>
             <table id="t">
               <thead>
                 <tr>
@@ -552,42 +382,58 @@
               </thead>
               <tbody>
                 <tr>
-                  <td colspan="3" class="empty-state">
-                    <div>No scans yet. Start scanning to see items here!</div>
+                  <td colspan="3">
+                    <p class="empty-copy">
+                      No scans yet. Start the camera to begin scanning!
+                    </p>
                   </td>
                 </tr>
               </tbody>
             </table>
+            <button id="clear-recent-btn" class="secondary-btn" style="margin-top: 18px;">
+              Clear list
+            </button>
+          </div>
+
+          <div class="info-panel hidden" id="ocr-card">
+            <h4>Extracted Text</h4>
+            <p class="empty-copy" id="ocr-placeholder">
+              No text extracted yet. Start the camera and capture a frame to begin.
+            </p>
+
+            <div id="ocr-status" class="status-line info">
+              Capture a frame to extract text.
+            </div>
+            <textarea
+              id="ocr-output"
+              readonly
+              placeholder="Recognized text will appear here..."
+            ></textarea>
           </div>
         </div>
       </div>
+      <footer>build: {{ version }}</footer>
     </div>
 
     <script type="module">
       window.addEventListener("DOMContentLoaded", () => {
-        const tokenInput = document.getElementById("token");
         const messageEl = document.getElementById("msg");
         const tbody = document.querySelector("#t tbody");
-        const tasklistSelect = document.getElementById("tasklist-select");
         const clearButton = document.getElementById("clear-recent-btn");
-        const activeListTitle = document.getElementById("active-list-title");
-        const cameraToggle = document.getElementById("camera-toggle");
+        const captureBtn = document.getElementById("capture-btn");
         const cameraStatus = document.getElementById("camera-status");
         const cameraVideo = document.getElementById("camera-stream");
-        const cameraCaptureBtn = document.getElementById("camera-capture");
-        const modeSelect = document.getElementById("scanner-mode");
+        const modeButtons = document.querySelectorAll("[data-mode]");
         const recentCard = document.getElementById("recent-card");
         const ocrCard = document.getElementById("ocr-card");
-        const ocrForm = document.getElementById("ocr-form");
-        const ocrFileInput = document.getElementById("ocr-file");
-        const ocrLangSelect = document.getElementById("ocr-language");
         const ocrStatus = document.getElementById("ocr-status");
         const ocrOutput = document.getElementById("ocr-output");
+        const ocrPlaceholder = document.getElementById("ocr-placeholder");
+
         let cameraRunning = false;
         let cameraStream = null;
         let cameraDetector = null;
-        let cameraFrameId = null;
-        const cameraSeen = new Set();
+        let currentMode = "barcode";
         const BARCODE_FORMATS = [
           "ean_13",
           "ean_8",
@@ -596,7 +442,6 @@
           "itf",
           "qr_code",
         ];
-        let currentMode = modeSelect ? modeSelect.value : "barcode";
 
         function displayStatus(el, state, text) {
           if (!el) return;
@@ -607,18 +452,14 @@
             el.style.display = "block";
             if (cls === "ok") {
               setTimeout(() => {
-                if (el.className === "ok") {
-                  el.style.display = "none";
-                }
+                if (el.className === "ok") el.style.display = "none";
               }, 3000);
             }
             return;
           }
           el.textContent = text;
           el.classList.remove("ok", "err", "info");
-          if (state) {
-            el.classList.add(state);
-          }
+          if (state) el.classList.add(state);
         }
 
         async function refreshRecent() {
@@ -626,9 +467,9 @@
           try {
             const res = await fetch("/recent");
             const data = await res.json();
-            if (!Array.isArray(data) || data.length === 0) {
+            if (!Array.isArray(data) || !data.length) {
               tbody.innerHTML =
-                '<tr><td colspan="3" class="empty-state"><div>No scans yet. Start scanning to see items here!</div></td></tr>';
+                '<tr><td colspan="3"><p class="empty-copy">No scans yet. Start the camera to begin scanning!</p></td></tr>';
               return;
             }
             tbody.innerHTML = data
@@ -642,84 +483,14 @@
           }
         }
 
-        async function loadTasklists() {
-          if (!tasklistSelect) return;
-          try {
-            const res = await fetch("/tasklists");
-            const data = await res.json();
-            if (!Array.isArray(data.items)) return;
-            tasklistSelect.innerHTML = "";
-            for (const item of data.items) {
-              const opt = document.createElement("option");
-              opt.value = item.id;
-              opt.textContent = item.title;
-              if (item.id === data.selected) opt.selected = true;
-              tasklistSelect.appendChild(opt);
-            }
-            if (activeListTitle) {
-              const sel = tasklistSelect.options[tasklistSelect.selectedIndex];
-              if (sel) activeListTitle.textContent = sel.textContent;
-            }
-          } catch (err) {
-            console.error("Failed to load tasklists", err);
-          }
-        }
-
-        async function switchTasklist() {
-          if (!tasklistSelect) return;
-          const tasklist_id = tasklistSelect.value;
-          try {
-            const res = await fetch("/tasklists/select", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ tasklist_id }),
-            });
-            const data = await res.json();
-            if (!res.ok || !data.ok) {
-              throw new Error(data.message || "Failed to switch list");
-            }
-            if (activeListTitle) {
-              const sel = tasklistSelect.options[tasklistSelect.selectedIndex];
-              activeListTitle.textContent = data.title || (sel ? sel.textContent : "");
-            }
-            if (messageEl) {
-              displayStatus(
-                messageEl,
-                "ok",
-                `✓ Switched to list: ${
-                  activeListTitle ? activeListTitle.textContent : ""
-                }`
-              );
-            }
-          } catch (err) {
-            console.error("Unable to switch task list", err);
-            if (messageEl) {
-              displayStatus(
-                messageEl,
-                "err",
-                "✗ " + (err.message || "Unable to switch list")
-              );
-            }
-            loadTasklists();
-          }
-        }
-
-        async function postScan(code, statusEl, options = {}) {
+        async function postScan(code, statusEl) {
           const target = statusEl || messageEl;
           if (!target) return false;
-          const token = tokenInput ? tokenInput.value.trim() : "";
-          if (!token) {
-            displayStatus(target, "err", "✗ Enter the ingest token before scanning.");
-            return false;
-          }
           try {
             const res = await fetch("/scan", {
               method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "X-Ingest-Token": token,
-              },
-              body: JSON.stringify({ code, token }),
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ code }),
             });
             const data = await res.json();
             const ok = res.ok && data.ok;
@@ -729,47 +500,28 @@
               ok ? "ok" : "err",
               prefix + (data.message || JSON.stringify(data))
             );
-            if (ok) {
-              refreshRecent();
-              if (typeof options.onSuccess === "function") {
-                options.onSuccess();
-              }
-            }
+            if (ok) refreshRecent();
             return ok;
           } catch (err) {
             console.error("Failed to submit scan", err);
-            displayStatus(target, "err", "✗ " + (err.message || "Unable to submit scan"));
+            displayStatus(
+              target,
+              "err",
+              "✗ " + (err.message || "Unable to submit scan")
+            );
             return false;
           }
         }
 
-        function resolveOcrLanguage() {
-          if (!ocrLangSelect) return "eng";
-          if (ocrLangSelect.value) return ocrLangSelect.value;
-          if (
-            ocrLangSelect.options &&
-            ocrLangSelect.options[ocrLangSelect.selectedIndex]
-          ) {
-            return ocrLangSelect.options[ocrLangSelect.selectedIndex].value;
-          }
-          return "eng";
-        }
-
         async function runOcrWithBlob(blob) {
-          if (!tokenInput || !ocrStatus) return;
-          const token = tokenInput.value.trim();
-          if (!token) {
-            displayStatus(ocrStatus, "err", "⚠️ Enter the ingest token before running OCR.");
-            return;
-          }
+          if (!ocrStatus) return;
           if (!blob) {
             displayStatus(ocrStatus, "err", "⚠️ No image provided.");
             return;
           }
           const formData = new FormData();
           formData.append("image", blob, "capture.png");
-          formData.append("language", resolveOcrLanguage());
-          formData.append("token", token);
+          formData.append("language", "eng");
 
           displayStatus(ocrStatus, "info", "Processing image…");
           if (ocrOutput) ocrOutput.value = "";
@@ -777,16 +529,17 @@
           try {
             const res = await fetch("/ocr", {
               method: "POST",
-              headers: { "X-Ingest-Token": token },
               body: formData,
             });
             const data = await res.json();
             if (!res.ok || !data.ok) {
               throw new Error(data.message || "OCR failed");
             }
+            if (ocrPlaceholder) ocrPlaceholder.classList.add("hidden");
             displayStatus(ocrStatus, "ok", "✓ Text extracted successfully");
             if (ocrOutput) {
-              ocrOutput.value = (data.text && data.text.trim()) || "(No text detected)";
+              ocrOutput.value =
+                (data.text && data.text.trim()) || "(No text detected)";
             }
           } catch (err) {
             console.error("OCR request failed", err);
@@ -798,231 +551,165 @@
           }
         }
 
-        async function submitOcr(e) {
-          if (e) {
-            e.preventDefault();
-            e.stopPropagation();
-          }
-          if (!ocrFileInput || !ocrStatus) return;
-          const file = ocrFileInput.files && ocrFileInput.files[0];
-          if (!file) {
-            displayStatus(ocrStatus, "err", "⚠️ Choose an image to upload.");
-            return;
-          }
-          await runOcrWithBlob(file);
-          ocrFileInput.value = "";
-        }
-
-        async function captureOcrFromCamera() {
-          if (!ocrStatus) return;
-          if (!cameraRunning || !cameraVideo || !cameraVideo.srcObject) {
-            displayStatus(
-              ocrStatus,
-              "err",
-              "Start the camera scanner before capturing."
-            );
-            return;
-          }
-          const width = cameraVideo.videoWidth || 640;
-          const height = cameraVideo.videoHeight || 480;
-          if (!width || !height) {
-            displayStatus(
-              ocrStatus,
-              "err",
-              "Camera feed not ready yet. Please wait a moment."
-            );
-            return;
-          }
-          const canvas = document.createElement("canvas");
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext("2d");
-          ctx.drawImage(cameraVideo, 0, 0, width, height);
-          const blob = await new Promise((resolve) =>
-            canvas.toBlob(resolve, "image/png")
-          );
-          if (!blob) {
-            displayStatus(ocrStatus, "err", "Unable to capture camera frame.");
-            return;
-          }
-          await runOcrWithBlob(blob);
-        }
-
         function hasSecureCameraOrigin() {
           if (window.isSecureContext) return true;
           return ["localhost", "127.0.0.1"].includes(window.location.hostname);
         }
 
         function applyModeLayout() {
-          const showRecent = currentMode === "barcode";
-          if (recentCard) recentCard.classList.toggle("hidden", !showRecent);
-          if (ocrCard) ocrCard.classList.toggle("hidden", showRecent);
-          if (cameraCaptureBtn) {
-            cameraCaptureBtn.classList.toggle("hidden", currentMode !== "ocr");
-          }
-          const statusText = showRecent
-            ? "Camera idle. Start scanning barcodes to add tasks."
-            : "Camera idle. Capture a frame to extract text.";
-          displayStatus(cameraStatus, "info", statusText);
+          const isBarcode = currentMode === "barcode";
+          if (recentCard) recentCard.classList.toggle("hidden", !isBarcode);
+          if (ocrCard) ocrCard.classList.toggle("hidden", isBarcode);
+          displayStatus(
+            cameraStatus,
+            "info",
+            isBarcode
+              ? "Camera idle. Capture a frame to add a task."
+              : "Camera idle. Capture a frame to extract text."
+          );
+          modeButtons.forEach((btn) =>
+            btn.classList.toggle("active", btn.dataset.mode === currentMode)
+          );
         }
 
         function stopCamera(reason = "Camera stopped.") {
-          if (cameraFrameId) {
-            cancelAnimationFrame(cameraFrameId);
-            cameraFrameId = null;
-          }
           if (cameraStream) {
             cameraStream.getTracks().forEach((track) => track.stop());
             cameraStream = null;
           }
-          cameraSeen.clear();
+          cameraRunning = false;
           if (cameraVideo) {
             cameraVideo.pause();
             cameraVideo.srcObject = null;
             cameraVideo.classList.add("hidden");
           }
-          if (cameraToggle) {
-            cameraToggle.textContent = "Start camera";
-            cameraToggle.classList.remove("active");
-          }
+          if (captureBtn) captureBtn.disabled = true;
           displayStatus(cameraStatus, "info", reason);
-          cameraRunning = false;
         }
 
         async function startCamera() {
-          if (cameraRunning || !cameraToggle) return;
-          if (!cameraStatus || !cameraVideo) return;
+          if (cameraRunning) return;
           if (
             !navigator.mediaDevices ||
             typeof navigator.mediaDevices.getUserMedia !== "function"
           ) {
-            displayStatus(
-              cameraStatus,
-              "err",
-              "Camera API unavailable in this browser."
-            );
-            return;
+            throw new Error("Camera API unavailable in this browser.");
           }
           if (!hasSecureCameraOrigin()) {
-            displayStatus(
-              cameraStatus,
-              "err",
-              "Camera access requires HTTPS or localhost."
-            );
-            return;
+            throw new Error("Camera access requires HTTPS or localhost.");
           }
           if (currentMode === "barcode" && !("BarcodeDetector" in window)) {
-            displayStatus(
-              cameraStatus,
-              "err",
+            throw new Error(
               "BarcodeDetector API not supported. Use a modern Chrome or Safari."
             );
-            return;
           }
-          if (!tokenInput || !tokenInput.value.trim()) {
-            displayStatus(
-              cameraStatus,
-              "err",
-              "Enter the ingest token before starting the camera."
-            );
-            return;
-          }
-          cameraToggle.disabled = true;
+          if (captureBtn) captureBtn.disabled = true;
+          cameraStream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: "environment" },
+          });
+          cameraVideo.srcObject = cameraStream;
+          cameraVideo.classList.remove("hidden");
           try {
-            if (currentMode === "barcode" && !cameraDetector) {
-              cameraDetector = new BarcodeDetector({ formats: BARCODE_FORMATS });
-            }
-            cameraStream = await navigator.mediaDevices.getUserMedia({
-              video: { facingMode: "environment" },
-            });
-            cameraVideo.srcObject = cameraStream;
-            cameraVideo.classList.remove("hidden");
-            cameraSeen.clear();
+            await cameraVideo.play();
+          } catch (err) {
+            console.warn("Camera playback warning", err);
+          }
+          cameraRunning = true;
+          if (captureBtn) captureBtn.disabled = false;
+          displayStatus(
+            cameraStatus,
+            "info",
+            currentMode === "barcode"
+              ? "Camera active. Capture a frame to add a task."
+              : "Camera active. Capture a frame to extract text."
+          );
+        }
+
+        async function captureFrame() {
+          if (!cameraVideo || !cameraVideo.srcObject) {
+            throw new Error("Camera not ready yet.");
+          }
+          const width = cameraVideo.videoWidth || 640;
+          const height = cameraVideo.videoHeight || 480;
+          if (!width || !height) {
+            throw new Error("Camera feed not ready. Please wait a moment.");
+          }
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+          canvas
+            .getContext("2d")
+            .drawImage(cameraVideo, 0, 0, width, height);
+          const blob = await new Promise((resolve) =>
+            canvas.toBlob(resolve, "image/png")
+          );
+          if (!blob) {
+            throw new Error("Unable to capture camera frame.");
+          }
+          return { canvas, blob };
+        }
+
+        async function processBarcodeCapture() {
+          if (!("BarcodeDetector" in window)) {
+            throw new Error("BarcodeDetector API not supported in this browser.");
+          }
+          if (!cameraDetector) {
+            cameraDetector = new BarcodeDetector({ formats: BARCODE_FORMATS });
+          }
+          const { canvas } = await captureFrame();
+          const barcodes = await cameraDetector.detect(canvas);
+          if (!barcodes.length) {
+            throw new Error("No barcode detected in this frame.");
+          }
+          const code = (barcodes[0].rawValue || "").trim();
+          if (!code) {
+            throw new Error("Detected barcode is empty. Try again.");
+          }
+          const ok = await postScan(code, cameraStatus);
+          if (!ok) {
+            throw new Error("Failed to process barcode.");
+          }
+        }
+
+        async function processOcrCapture() {
+          const { blob } = await captureFrame();
+          await runOcrWithBlob(blob);
+        }
+
+        async function handleCaptureClick() {
+          if (!cameraRunning) {
             try {
-              await cameraVideo.play();
+              await startCamera();
             } catch (err) {
-              console.warn("Camera playback warning", err);
+              displayStatus(cameraStatus, "err", err.message);
+              return;
             }
-            cameraRunning = true;
-            cameraToggle.textContent = "Stop camera";
-            cameraToggle.classList.add("active");
-            displayStatus(
-              cameraStatus,
-              "info",
-              currentMode === "barcode"
-                ? "Camera active. Scan a barcode to send it."
-                : "Camera active. Tap capture to extract text."
-            );
-            if (currentMode === "barcode") {
-              cameraFrameId = requestAnimationFrame(scanFrame);
-            }
-          } catch (err) {
-            console.error("Failed to start camera", err);
-            displayStatus(
-              cameraStatus,
-              "err",
-              err.message || "Unable to access camera."
-            );
-            stopCamera("Camera failed to start.");
-          } finally {
-            cameraToggle.disabled = false;
           }
-        }
-
-        async function scanFrame() {
-          if (!cameraRunning || currentMode !== "barcode" || !cameraDetector)
-            return;
+          if (captureBtn) captureBtn.disabled = true;
           try {
-            const barcodes = await cameraDetector.detect(cameraVideo);
-            for (const barcode of barcodes) {
-              const code = (barcode.rawValue || "").trim();
-              if (!code || cameraSeen.has(code)) continue;
-              cameraSeen.add(code);
-              const ok = await postScan(code, cameraStatus, {
-                onSuccess: () => {
-                  if (cameraRunning && currentMode === "barcode") {
-                    setTimeout(() => {
-                      if (cameraRunning && currentMode === "barcode") {
-                        displayStatus(
-                          cameraStatus,
-                          "info",
-                          "Camera active. Ready for the next barcode."
-                        );
-                      }
-                    }, 2500);
-                  }
-                },
-              });
-              if (!ok) {
-                cameraSeen.delete(code);
-              } else {
-                setTimeout(() => cameraSeen.delete(code), 5000);
-              }
+            if (currentMode === "barcode") {
+              await processBarcodeCapture();
+            } else {
+              await processOcrCapture();
             }
           } catch (err) {
-            console.error("Barcode detection failed", err);
-          }
-          if (cameraRunning && currentMode === "barcode") {
-            cameraFrameId = requestAnimationFrame(scanFrame);
+            const target = currentMode === "barcode" ? cameraStatus : ocrStatus;
+            displayStatus(target, "err", err.message || "Capture failed.");
+          } finally {
+            if (captureBtn) captureBtn.disabled = false;
           }
         }
 
-        function handleModeChange() {
-          const selected = modeSelect ? modeSelect.value : "barcode";
-          if (selected === currentMode) return;
-          currentMode = selected;
-          stopCamera("Mode changed; camera stopped.");
+        function handleModeChange(mode) {
+          if (mode === currentMode) return;
+          currentMode = mode;
           applyModeLayout();
         }
 
-        // Initial bootstrapping
-        applyModeLayout();
         refreshRecent();
         setInterval(refreshRecent, 1500);
-        if (tasklistSelect) {
-          loadTasklists();
-          tasklistSelect.addEventListener("change", switchTasklist);
-        }
+        applyModeLayout();
+
         if (clearButton) {
           clearButton.addEventListener("click", async () => {
             try {
@@ -1030,58 +717,42 @@
               const data = await res.json();
               if (!res.ok || !data.ok) throw new Error("Unable to clear list");
               refreshRecent();
-              if (messageEl) {
-                displayStatus(messageEl, "ok", "✓ Recent list cleared");
-              }
+              displayStatus(messageEl, "ok", "✓ Recent list cleared");
             } catch (err) {
               console.error("Failed to clear recent list", err);
-              if (messageEl) {
-                displayStatus(
-                  messageEl,
-                  "err",
-                  "✗ " + (err.message || "Failed to clear list")
-                );
-              }
+              displayStatus(
+                messageEl,
+                "err",
+                "✗ " + (err.message || "Failed to clear list")
+              );
             }
           });
         }
-        if (cameraToggle) {
-          cameraToggle.addEventListener("click", async () => {
-            if (cameraRunning) {
-              stopCamera();
-            } else {
-              await startCamera();
-            }
-          });
+
+        modeButtons.forEach((btn) =>
+          btn.addEventListener("click", () => handleModeChange(btn.dataset.mode))
+        );
+
+        if (captureBtn) {
+          captureBtn.addEventListener("click", handleCaptureClick);
         }
-        if (modeSelect) {
-          modeSelect.addEventListener("change", handleModeChange);
-        }
-        if (ocrForm) {
-          ocrForm.addEventListener("submit", submitOcr);
-        }
-        if (cameraCaptureBtn) {
-          cameraCaptureBtn.addEventListener("click", captureOcrFromCamera);
-        }
+
         window.addEventListener("beforeunload", () => {
           if (cameraRunning) stopCamera();
         });
         document.addEventListener("visibilitychange", () => {
-          if (document.hidden && cameraRunning) {
-            stopCamera();
-          }
+          if (document.hidden && cameraRunning) stopCamera();
         });
+
+        startCamera().catch((err) =>
+          displayStatus(
+            cameraStatus,
+            "err",
+            err.message ||
+              "Camera blocked. Allow permissions or click Capture to retry."
+          )
+        );
       });
     </script>
-    <footer
-      style="
-        margin-top: 1rem;
-        font-size: 0.85rem;
-        opacity: 0.7;
-        text-align: center;
-      "
-    >
-      build: {{ version }}
-    </footer>
   </body>
 </html>

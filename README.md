@@ -14,7 +14,7 @@ This repository contains a small Flask application that lets you capture grocery
 
 The workflow:
 
-1. A barcode scan (desktop or mobile) posts to `/scan` with the shared ingest token.
+1. A barcode scan (desktop or mobile) posts to `/scan` directly from the unified camera UI.
 2. The server normalizes the code, rejects duplicates within a 3‑second cooldown, and attempts an Open Food Facts lookup for title/notes enrichment.
 3. A task is inserted into the active Google Tasks list, and the scan is prepended to the in-memory “Recent scans” feed.
 4. The dashboard polls `/recent` and `/tasklists` to keep the UI live, and supports switching the active Google Tasks list at any time.
@@ -27,6 +27,7 @@ The workflow:
 - **Task list selector** – Choose a default list at runtime without editing environment variables.
 - **Mobile-friendly UI** – Responsive layout adapts to phones/tablets for pantry-side scanning.
 - **Image OCR uploads** – Drag-and-drop a label/receipt photo and extract text through Tesseract right from the dashboard.
+- **Unified camera workflow** – The app auto-starts the camera and uses a single capture button for both barcode scans and document OCR, mirroring the new dashboard mockups.
 
 ---
 
@@ -79,7 +80,6 @@ All configuration comes from environment variables (e.g. `.env`). Values marked 
 | Key | Default | Description |
 | --- | --- | --- |
 | `PORT` | `5000` | Flask server port. |
-| `INGEST_TOKEN` | `changeme` | Shared secret required by the `/scan` endpoint, dashboard form, and mobile UI. Choose a long random string in production. |
 | `TASKLIST_ID` | *(blank)* | Preferred Google Tasks list ID. Leave blank to auto-select (or create) the first list. |
 | `TASKLIST_TITLE` | *(blank)* | Friendly name used on initial dashboard load. Updated automatically when you switch lists. |
 
@@ -92,12 +92,11 @@ Environment changes require a server restart.
 
 ### Desktop Dashboard (`/`)
 
-- **Manual / USB scans** – Focus the input field, scan a barcode, and it auto-submits. Successful scans clear the field, add a task, and append to “Recent scans”.
-- **Task list picker** – The “Choose list” dropdown is populated from the Google Tasks API. Switch lists any time; the selection is stored in memory and future scans go to that list.
-- **Recent scans feed** – Shows timestamped entries with the resolved product title and barcode, including duplicate notices.
+- **Unified camera hero** – The app auto-starts your camera (HTTPS required) and exposes a single capture button that adapts to the selected mode.
+- **Scanner mode selector** – Toggle between “Barcode Scanner” (sends the next capture to `/scan`) and “Document OCR” (sends the frame to `/ocr`).
+- **Recent scans feed** – Shows timestamped entries with the resolved product title and barcode, including duplicate notices. The feed refreshes automatically after every successful barcode capture.
+- **Extracted text panel** – Displays the most recent OCR output from the camera. Each new document capture replaces the text and keeps the historical log in the textarea for copy/paste.
 - **Clear list button** – Use “Clear list” in the Recent Scans card to wipe the on-screen table and the in-memory cache (useful when starting a new session).
-- **Scanner mode selector** – Pick between “Barcode → Tasks” (uses the browser’s `BarcodeDetector` API) or “Document OCR” (captures a frame and sends it to the OCR endpoint). The single “Start camera” button adapts based on the selected mode.
-- **OCR card** – Upload a photo/scan of a label or receipt and the server will run Tesseract via pytesseract, returning the extracted text in the dashboard for quick copy/paste into tasks.
 
 ### API Endpoints
 
@@ -105,11 +104,11 @@ Environment changes require a server restart.
 | --- | --- | --- |
 | `GET` | `/` | Responsive dashboard UI (desktop and mobile). |
 | `GET` | `/recent` | Returns recent scans array `{code, when}` for the dashboard table. |
-| `POST` | `/scan` | Main ingest endpoint. Requires JSON body `{"code": "...", "token": "..."}` or `X-Ingest-Token` header. |
+| `POST` | `/scan` | Main ingest endpoint. Send JSON body `{"code": "..."}`. |
 | `GET` | `/tasklists` | Lists available Google Tasks lists (`id`, `title`) and the currently selected list ID. |
 | `POST` | `/tasklists/select` | Switches the active Google Tasks list. JSON body: `{"tasklist_id": "..."}`. |
 | `POST` | `/recent/clear` | Clears the in-memory recent scan cache and duplicate tracker. |
-| `POST` | `/ocr` | Accepts `multipart/form-data` with `image` (and optional `language`). Requires ingest token. Returns extracted text via Tesseract. |
+| `POST` | `/ocr` | Accepts `multipart/form-data` with `image` (and optional `language`). Returns extracted text via Tesseract. |
 
 All responses are JSON except for the templated pages. Non-200 responses from `/scan` include an explanatory message that surfaces in the UI banner.
 
@@ -117,7 +116,6 @@ Example OCR request:
 
 ```bash
 curl -X POST https://localhost:5000/ocr \
-  -H "X-Ingest-Token: $INGEST_TOKEN" \
   -F image=@label.jpg \
   -F language=eng
 ```
@@ -152,7 +150,6 @@ Response:
 
 ## Troubleshooting
 
-- **“Auth failed” in logs or UI** – Ensure the ingest token in `.env`, the dashboard input, and the mobile token all match exactly.
 - **Tasks no longer appear** – Revoked credentials cause `/scan` to emit an error banner. Delete `token.json` and restart to trigger OAuth; also confirm the selected list still exists.
 - **Mobile camera won’t start** – The device must load the page over HTTPS; use the provided TLS certs or set up your own trusted cert.
 - **Camera button disabled or errors** – Modern Chrome/Safari builds on HTTPS (or localhost) are required for `BarcodeDetector`. If unsupported, use the manual field or a USB scanner instead.

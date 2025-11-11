@@ -252,6 +252,10 @@
         display: none;
       }
 
+      video.capture-enabled {
+        cursor: pointer;
+      }
+
       .status-line {
         margin-top: 12px;
         font-size: 14px;
@@ -415,12 +419,14 @@
             </button>
           </div>
 
-          <button id="capture-btn" class="primary-btn" disabled>
-            Capture Frame
-          </button>
-
           <div class="camera-wrap hidden" id="camera-wrap">
-            <video id="camera-stream" playsinline muted></video>
+            <video
+              id="camera-stream"
+              playsinline
+              muted
+              tabindex="0"
+              aria-label="Camera preview"
+            ></video>
           </div>
 
           <div id="camera-status" class="status-line info">
@@ -463,12 +469,12 @@
           <div class="info-panel hidden" id="ocr-card">
             <h4>Extracted Text</h4>
             <p class="empty-copy" id="ocr-placeholder">
-              No text extracted yet. Start the camera and capture a frame to
-              begin.
+              No text extracted yet. Start the camera, then tap the preview to
+              capture a page.
             </p>
 
             <div id="ocr-status" class="status-line info">
-              Capture a frame to extract text.
+              Tap the preview to capture text.
             </div>
             <textarea
               id="ocr-output"
@@ -486,7 +492,6 @@
         const messageEl = document.getElementById("msg");
         const tbody = document.querySelector("#t tbody");
         const clearButton = document.getElementById("clear-recent-btn");
-        const captureBtn = document.getElementById("capture-btn");
         const cameraStatus = document.getElementById("camera-status");
         const cameraPermissionBtn = document.getElementById(
           "camera-permission-btn"
@@ -499,6 +504,7 @@
         const ocrStatus = document.getElementById("ocr-status");
         const ocrOutput = document.getElementById("ocr-output");
         const ocrPlaceholder = document.getElementById("ocr-placeholder");
+        const playShutter = createShutterPlayer();
 
         let cameraRunning = false;
         let cameraStream = null;
@@ -506,6 +512,7 @@
         let barcodeFrameId = null;
         let lastBarcodeValue = "";
         let lastBarcodeTime = 0;
+        let ocrCapturePending = false;
         const isIOS = /iPad|iPhone|iPod/i.test(navigator.userAgent);
         const barcodeSupported = "BarcodeDetector" in window;
         let currentMode = barcodeSupported ? "barcode" : "ocr";
@@ -535,6 +542,34 @@
           el.textContent = text;
           el.classList.remove("ok", "err", "info");
           if (state) el.classList.add(state);
+        }
+
+        function createShutterPlayer() {
+          const AudioContext =
+            window.AudioContext || window.webkitAudioContext || null;
+          if (!AudioContext) {
+            return () => {};
+          }
+          let ctx = null;
+          return () => {
+            try {
+              ctx = ctx || new AudioContext();
+              if (ctx.state === "suspended") ctx.resume();
+              const osc = ctx.createOscillator();
+              const gain = ctx.createGain();
+              osc.type = "triangle";
+              osc.frequency.value = 900;
+              const now = ctx.currentTime;
+              gain.gain.setValueAtTime(0.0001, now);
+              gain.gain.exponentialRampToValueAtTime(0.4, now + 0.01);
+              gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.08);
+              osc.connect(gain).connect(ctx.destination);
+              osc.start(now);
+              osc.stop(now + 0.08);
+            } catch (err) {
+              console.debug("Unable to play shutter sound", err);
+            }
+          };
         }
 
         async function refreshRecent() {
@@ -637,19 +672,19 @@
           const isBarcode = currentMode === "barcode";
           if (recentCard) recentCard.classList.toggle("hidden", !isBarcode);
           if (ocrCard) ocrCard.classList.toggle("hidden", isBarcode);
-          if (captureBtn) captureBtn.classList.toggle("hidden", isBarcode);
           displayStatus(
             cameraStatus,
             "info",
             isBarcode
-              ? "Camera idle. Capture a frame to add a task."
-              : "Camera idle. Capture a frame to extract text."
+              ? "Camera idle. Align a barcode within the guides."
+              : "Camera idle. Tap the preview to capture text."
           );
           modeButtons.forEach((btn) =>
             btn.classList.toggle("active", btn.dataset.mode === currentMode)
           );
           if (cameraVideo) {
             cameraVideo.classList.toggle("portrait", !isBarcode);
+            cameraVideo.classList.toggle("capture-enabled", !isBarcode);
           }
           if (cameraWrap) {
             cameraWrap.classList.toggle("portrait", !isBarcode);
@@ -671,7 +706,6 @@
             cameraVideo.srcObject = null;
             cameraWrap.classList.add("hidden");
           }
-          if (captureBtn) captureBtn.disabled = true;
           displayStatus(cameraStatus, "info", reason);
         }
 
@@ -719,7 +753,6 @@
               "BarcodeDetector API not supported. Use a modern Chrome or Safari."
             );
           }
-          if (captureBtn) captureBtn.disabled = true;
           const constraints =
             currentMode === "barcode"
               ? {
@@ -755,13 +788,12 @@
             console.warn("Camera playback warning", err);
           }
           cameraRunning = true;
-          if (captureBtn) captureBtn.disabled = false;
           displayStatus(
             cameraStatus,
             "info",
             currentMode === "barcode"
               ? "Camera active. Align a barcode within the guides."
-              : "Camera active. Capture a frame to extract text."
+              : "Camera active. Tap the preview to capture text."
           );
           if (currentMode === "barcode") {
             startBarcodeLoop();
@@ -822,11 +854,12 @@
 
         async function processOcrCapture() {
           const { blob } = await captureFrame();
+          playShutter();
           await runOcrWithBlob(blob);
         }
 
-        async function handleCaptureClick() {
-          if (currentMode === "barcode") return; // button hidden anyway
+        async function handlePreviewClick() {
+          if (currentMode !== "ocr" || ocrCapturePending) return;
           if (!cameraRunning) {
             try {
               await startCamera({ userInitiated: true });
@@ -835,13 +868,21 @@
               return;
             }
           }
-          if (captureBtn) captureBtn.disabled = true;
+          ocrCapturePending = true;
           try {
             await processOcrCapture();
           } catch (err) {
             displayStatus(ocrStatus, "err", err.message || "Capture failed.");
           } finally {
-            if (captureBtn) captureBtn.disabled = false;
+            ocrCapturePending = false;
+          }
+        }
+
+        function handlePreviewKeydown(evt) {
+          if (currentMode !== "ocr") return;
+          if (evt.key === " " || evt.key === "Enter") {
+            evt.preventDefault();
+            handlePreviewClick();
           }
         }
 
@@ -921,8 +962,9 @@
           )
         );
 
-        if (captureBtn) {
-          captureBtn.addEventListener("click", handleCaptureClick);
+        if (cameraVideo) {
+          cameraVideo.addEventListener("click", handlePreviewClick);
+          cameraVideo.addEventListener("keydown", handlePreviewKeydown);
         }
 
         if (cameraPermissionBtn) {

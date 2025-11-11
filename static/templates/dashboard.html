@@ -129,6 +129,12 @@
         box-shadow: inset 0 0 0 2px rgba(124, 140, 255, 0.15);
       }
 
+      .mode-option.disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+        box-shadow: inset 0 0 0 2px rgba(100, 116, 139, 0.25);
+      }
+
       .mode-option span.icon {
         font-size: 18px;
       }
@@ -488,7 +494,9 @@
         let barcodeFrameId = null;
         let lastBarcodeValue = "";
         let lastBarcodeTime = 0;
-        let currentMode = "barcode";
+        const isIOS = /iPad|iPhone|iPod/i.test(navigator.userAgent);
+        const barcodeSupported = "BarcodeDetector" in window;
+        let currentMode = barcodeSupported ? "barcode" : "ocr";
         const BARCODE_FORMATS = [
           "ean_13",
           "ean_8",
@@ -653,14 +661,34 @@
           displayStatus(cameraStatus, "info", reason);
         }
 
+        function legacyGetUserMedia(constraints) {
+          const legacy =
+            navigator.getUserMedia ||
+            navigator.webkitGetUserMedia ||
+            navigator.mozGetUserMedia ||
+            navigator.msGetUserMedia;
+          if (!legacy) return null;
+          return new Promise((resolve, reject) =>
+            legacy.call(navigator, constraints, resolve, reject)
+          );
+        }
+
+        async function requestCameraStream(constraints) {
+          if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+            return navigator.mediaDevices.getUserMedia(constraints);
+          }
+          const legacy = legacyGetUserMedia({
+            video: constraints.video || constraints,
+            audio: false,
+          });
+          if (legacy) return legacy;
+          throw new Error(
+            "Camera API unavailable in this browser (consider updating iOS/Safari)."
+          );
+        }
+
         async function startCamera({ userInitiated = false } = {}) {
           if (cameraRunning) return;
-          if (
-            !navigator.mediaDevices ||
-            typeof navigator.mediaDevices.getUserMedia !== "function"
-          ) {
-            throw new Error("Camera API unavailable in this browser.");
-          }
           if (!hasSecureCameraOrigin()) {
             throw new Error("Camera access requires HTTPS or localhost.");
           }
@@ -690,9 +718,7 @@
             cameraPermissionBtn.classList.add("hidden");
           }
           try {
-            cameraStream = await navigator.mediaDevices.getUserMedia(
-              constraints
-            );
+            cameraStream = await requestCameraStream(constraints);
           } catch (err) {
             if (!userInitiated && cameraPermissionBtn) {
               cameraPermissionBtn.classList.remove("hidden");
@@ -821,6 +847,14 @@
 
         function handleModeChange(mode) {
           if (mode === currentMode) return;
+          if (mode === "barcode" && !barcodeSupported) {
+            displayStatus(
+              cameraStatus,
+              "err",
+              "BarcodeDetector is not available on this device. Use Document OCR or a desktop browser."
+            );
+            return;
+          }
           const wasRunning = cameraRunning;
           stopCamera("Mode changed; camera stopped.");
           currentMode = mode;
@@ -835,6 +869,14 @@
         refreshRecent();
         setInterval(refreshRecent, 1500);
         applyModeLayout();
+        if (!barcodeSupported) {
+          const barcodeBtn = document.querySelector('[data-mode="barcode"]');
+          if (barcodeBtn) {
+            barcodeBtn.classList.add("disabled");
+            barcodeBtn.title =
+              "Barcode scanning is not supported on this browser. Use Document OCR or a desktop browser.";
+          }
+        }
 
         if (clearButton) {
           clearButton.addEventListener("click", async () => {
@@ -881,15 +923,30 @@
           if (document.hidden && cameraRunning) stopCamera();
         });
 
-        startCamera().catch((err) => {
-          if (cameraPermissionBtn) cameraPermissionBtn.classList.remove("hidden");
+        if (!isIOS) {
+          startCamera()
+            .then(() => {
+              if (cameraPermissionBtn)
+                cameraPermissionBtn.classList.add("hidden");
+            })
+            .catch((err) => {
+              if (cameraPermissionBtn)
+                cameraPermissionBtn.classList.remove("hidden");
+              displayStatus(
+                cameraStatus,
+                "err",
+                err.message ||
+                  "Camera blocked. Tap Enable Camera to allow access."
+              );
+            });
+        } else if (cameraPermissionBtn) {
+          cameraPermissionBtn.classList.remove("hidden");
           displayStatus(
             cameraStatus,
-            "err",
-            err.message ||
-              "Camera blocked. Tap Enable Camera to allow access."
+            "info",
+            "Tap Enable Camera to grant access on iOS browsers."
           );
-        });
+        }
       });
     </script>
   </body>

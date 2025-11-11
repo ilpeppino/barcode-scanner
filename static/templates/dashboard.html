@@ -3,11 +3,13 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Cameraful</title>
     <link
       rel="icon"
-      href="/static/barcode_favicon.ico?v={{ app_version }}"
+      type="image/x-icon"
+      href="{{ url_for('static', filename='cameraful.png') }}"
     />
-    <title>Unified Scanner</title>
+    <title>Cameraful</title>
     <style>
       :root {
         font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
@@ -18,7 +20,12 @@
       body {
         min-height: 100vh;
         margin: 0;
-        background: linear-gradient(150deg, #000000 0%, #191919 45%, #2c2c2c 100%);
+        background: linear-gradient(
+          150deg,
+          #000000 0%,
+          #191919 45%,
+          #2c2c2c 100%
+        );
         display: flex;
         align-items: center;
         justify-content: center;
@@ -393,7 +400,7 @@
     <div class="shell">
       <div class="scanner-card">
         <header>
-          <h1>📱 Unified Scanner</h1>
+          <h1>Cameraful</h1>
           <p>Scan barcodes or extract text from documents</p>
         </header>
         <div class="scanner-body">
@@ -444,7 +451,11 @@
                 </tr>
               </tbody>
             </table>
-            <button id="clear-recent-btn" class="secondary-btn" style="margin-top: 18px;">
+            <button
+              id="clear-recent-btn"
+              class="secondary-btn"
+              style="margin-top: 18px"
+            >
               Clear list
             </button>
           </div>
@@ -452,7 +463,8 @@
           <div class="info-panel hidden" id="ocr-card">
             <h4>Extracted Text</h4>
             <p class="empty-copy" id="ocr-placeholder">
-              No text extracted yet. Start the camera and capture a frame to begin.
+              No text extracted yet. Start the camera and capture a frame to
+              begin.
             </p>
 
             <div id="ocr-status" class="status-line info">
@@ -538,7 +550,9 @@
             tbody.innerHTML = data
               .map(
                 (x) =>
-                  `<tr><td>${x.when}</td><td>${x.title || "—"}</td><td class="code-cell">${x.code}</td></tr>`
+                  `<tr><td>${x.when}</td><td>${
+                    x.title || "—"
+                  }</td><td class="code-cell">${x.code}</td></tr>`
               )
               .join("");
           } catch (err) {
@@ -766,9 +780,7 @@
           const canvas = document.createElement("canvas");
           canvas.width = width;
           canvas.height = height;
-          canvas
-            .getContext("2d")
-            .drawImage(cameraVideo, 0, 0, width, height);
+          canvas.getContext("2d").drawImage(cameraVideo, 0, 0, width, height);
           const blob = await new Promise((resolve) =>
             canvas.toBlob(resolve, "image/png")
           );
@@ -780,7 +792,9 @@
 
         async function processBarcodeCapture() {
           if (!("BarcodeDetector" in window)) {
-            throw new Error("BarcodeDetector API not supported in this browser.");
+            throw new Error(
+              "BarcodeDetector API not supported in this browser."
+            );
           }
           if (!cameraDetector) {
             cameraDetector = new BarcodeDetector({ formats: BARCODE_FORMATS });
@@ -825,11 +839,7 @@
           try {
             await processOcrCapture();
           } catch (err) {
-            displayStatus(
-              ocrStatus,
-              "err",
-              err.message || "Capture failed."
-            );
+            displayStatus(ocrStatus, "err", err.message || "Capture failed.");
           } finally {
             if (captureBtn) captureBtn.disabled = false;
           }
@@ -906,7 +916,9 @@
         }
 
         modeButtons.forEach((btn) =>
-          btn.addEventListener("click", () => handleModeChange(btn.dataset.mode))
+          btn.addEventListener("click", () =>
+            handleModeChange(btn.dataset.mode)
+          )
         );
 
         if (captureBtn) {

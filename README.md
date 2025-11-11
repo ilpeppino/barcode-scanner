@@ -1,203 +1,203 @@
 # Barcode Scanner → Google Tasks
 
-This repository contains a small Flask application that lets you capture grocery barcodes and file them directly into Google Tasks. A desktop dashboard caters to USB “keyboard wedge” scanners, while a mobile-friendly camera UI uses the browser’s `BarcodeDetector` API for scanning on the go. The service normalizes and de-duplicates barcodes, enriches them with Open Food Facts data when available, and gives you quick visibility into recent captures.
+A small Flask application that lets you point any camera (desktop or phone) at groceries, read the barcode or run OCR on labels/receipts, and drop everything directly into Google Tasks. The dashboard is responsive, supports real-time recent history, and runs happily on laptops, desktops, or a NAS container.
 
 ---
 
-## Overview
+## What You Get
 
-| Component | Purpose |
+| Component | Description |
 | --- | --- |
-| `app.py` | Flask application wrapping Google Tasks integration, dedupe logic, and product lookup. |
-| `static/templates/dashboard.html` & `static/js/dashboard.js` | Responsive web UI that supports desktop USB scanners and mobile browsers, with list management and recent scan log. |
-| `docs/qrcodes.pdf` | Handy printable QR codes that open the dashboard on mobile devices. |
+| `app.py` | Flask + Gunicorn backend. Handles Google Tasks OAuth, barcode dedupe, OCR routing (pytesseract), Open Food Facts enrichment, and REST endpoints. |
+| `static/templates/dashboard.html` | Unified HTML/JS dashboard: USB scanners, auto barcode capture, OCR capture, recent history, task-list switcher. |
+| `docs/qrcodes.pdf` | Printable QR codes to open the dashboard from your phone. |
 
-The workflow:
+Workflow:
 
-1. A barcode scan (desktop or mobile) posts to `/scan` directly from the unified camera UI.
-2. The server normalizes the code, rejects duplicates within a 3‑second cooldown, and attempts an Open Food Facts lookup for title/notes enrichment.
-3. A task is inserted into the active Google Tasks list, and the scan is prepended to the in-memory “Recent scans” feed.
-4. The dashboard polls `/recent` and `/tasklists` to keep the UI live, and supports switching the active Google Tasks list at any time.
-
-## Features
-
-- **Instant Google Tasks sync** – Every barcode becomes a new task (with optional product metadata) on the selected list.
-- **Dual input modes** – Works with USB “keyboard wedge” scanners or the built-in camera scanner (modern HTTPS browsers required).
-- **Recent activity board** – Shows timestamps, resolved titles, and barcodes for the last 200 scans plus duplicate warnings.
-- **Task list selector** – Choose a default list at runtime without editing environment variables.
-- **Mobile-friendly UI** – Responsive layout adapts to phones/tablets for pantry-side scanning.
-- **Image OCR uploads** – Drag-and-drop a label/receipt photo and extract text through Tesseract right from the dashboard.
-- **Unified camera workflow** – The app auto-starts the camera and uses a single capture button for both barcode scans and document OCR, mirroring the new dashboard mockups.
+1. You authenticate once with Google Tasks (Desktop OAuth client).  
+2. The dashboard auto-starts your camera (HTTPS context) and continuously listens for barcodes or on-demand OCR captures.  
+3. Each barcode is normalized, de-duplicated (3 s cooldown), optionally enriched with Open Food Facts, and inserted into your selected Google Tasks list.  
+4. OCR captures route through pytesseract and the extracted text is shown immediately in the UI for easy copy/paste.  
+5. Recent scans + OCR updates refresh automatically so operators always see what just went in.
 
 ---
 
-## Requirements
+## Prerequisites
 
-- Python 3.10+ (developed against 3.11).
-- A Google Cloud project with the **Google Tasks API** enabled.
-- An OAuth “Desktop” client downloaded as `credentials.json` in the repo root.
-- Local TLS certificates if you need HTTPS for camera access (the checked-in `Giuseppes-MacBook-Air.local+1.pem` pair are machine-specific; replace as needed).
-- [Tesseract OCR](https://github.com/tesseract-ocr/tesseract) installed on the host (`brew install tesseract` on macOS, `apt install tesseract-ocr` on Debian/Ubuntu) for the OCR endpoint.
+| Requirement | Notes |
+| --- | --- |
+| Python 3.10+ (for local dev) | Repo tested with 3.11. |
+| Tesseract OCR binary | `brew install tesseract` (macOS) / `apt install tesseract-ocr` (Debian/Ubuntu). Needed even in Docker builds. |
+| Google Cloud project | Enable **Google Tasks API**, create an OAuth *Desktop app* client, download `credentials.json`. |
+| HTTPS access for cameras | Browsers only grant camera access on HTTPS or `localhost`. For WAN/LAN access use Cloudflare, Let’s Encrypt, mkcert, etc. |
+| Domain/DNS (optional but recommended) | Example: `gtemp1.com` on Hostinger with Cloudflare proxying to your NAS. |
 
-Optional but recommended:
+Optional tooling: Docker & Docker Compose (for NAS/Synology), Cloudflare Tunnel/Access, Pi-hole for LAN DNS.
 
-- A USB barcode scanner that types into focused input fields.
-- A mobile browser supporting `BarcodeDetector` (recent Chrome/Safari).
+### Python modules
+
+If you install dependencies manually (outside Docker), ensure these packages are present:
+
+```
+Flask==3.0.3
+google-api-python-client==2.149.0
+google-auth==2.35.0
+google-auth-oauthlib==1.2.1
+google-auth-httplib2==0.2.0
+requests==2.32.3
+python-dotenv==1.0.1
+gunicorn
+pytesseract==0.3.10
+Pillow==11.0.0
+```
+
+Running `pip install -r requirements.txt` installs the exact versions above.
+
 
 ---
 
-## Quick Start
+## Local Development (macOS/Linux/WSL)
 
-1. **Create a virtual environment (recommended).**
+1. **Clone & enter repo**
+   ```bash
+   git clone https://github.com/<you>/barcode-scanner.git
+   cd barcode-scanner
+   ```
+2. **Virtualenv + deps**
    ```bash
    python3 -m venv .venv
    source .venv/bin/activate
-   ```
-2. **Install dependencies.**
-   ```bash
    pip install -r requirements.txt
    ```
-3. **Create a `.env` file.**
+3. **Configure env**
    ```bash
    cp .env.example .env
+   # edit PORT, TASKLIST_TITLE, etc.
    ```
-   Adjust the environment variables described below.
-4. **Drop your Google OAuth credentials** into `credentials.json`.
-5. **Run the app.**
+4. **Drop Google OAuth files**
+   - `credentials.json` → repo root.  
+   - First run will produce `token.json` (store it; delete to re-auth).
+5. **Start dev server**
    ```bash
    python app.py
    ```
-   On first launch the server runs the OAuth flow, writes the resulting token to `token.json`, and then listens on `https://0.0.0.0:5000/` by default. Change the `PORT` env var or the `ssl_context` tuple if required.
-
-Once running, visit `https://<host>:<port>/` for the dashboard—which is mobile-friendly—or scan the `/docs/qrcodes.pdf` QR to open it on a phone.
-
----
-
-## Configuration
-
-All configuration comes from environment variables (e.g. `.env`). Values marked *optional* have sensible defaults.
-
-| Key | Default | Description |
-| --- | --- | --- |
-| `PORT` | `5000` | Flask server port. |
-| `TASKLIST_ID` | *(blank)* | Preferred Google Tasks list ID. Leave blank to auto-select (or create) the first list. |
-| `TASKLIST_TITLE` | *(blank)* | Friendly name used on initial dashboard load. Updated automatically when you switch lists. |
-
-
-Environment changes require a server restart.
+   Flask runs with the bundled TLS cert (`Giuseppes-*.pem`). Swap in your own PEM pair (mkcert works) via the `ssl_context` tuple if needed.
+6. **Open dashboard**
+   - Desktop: `https://127.0.0.1:5000/`  
+   - Phone on same LAN: trust the cert (mkcert CA) or proxy via Cloudflare/HTTPS.
 
 ---
 
-## Using the Application
+## Google OAuth – Step-by-step
 
-### Desktop Dashboard (`/`)
+1. In Google Cloud Console → APIs & Services → Enable APIs → **Google Tasks API**.
+2. Credentials → Create Credentials → *OAuth client ID* → Application type **Desktop**.
+3. Download the JSON, rename to `credentials.json`, place in repo root.
+4. Run `python app.py` once; browser opens Google consent. Complete flow → `token.json` is generated.
+5. Protect `credentials.json`/`token.json` (never commit them). In Docker, map them via volumes.
 
-- **Unified camera hero** – The app auto-starts your camera (HTTPS required) and exposes a single capture button that adapts to the selected mode.
-- **Scanner mode selector** – Toggle between “Barcode Scanner” (sends the next capture to `/scan`) and “Document OCR” (sends the frame to `/ocr`).
-- **Recent scans feed** – Shows timestamped entries with the resolved product title and barcode, including duplicate notices. The feed refreshes automatically after every successful barcode capture.
-- **Extracted text panel** – Displays the most recent OCR output from the camera. Each new document capture replaces the text and keeps the historical log in the textarea for copy/paste.
-- **Clear list button** – Use “Clear list” in the Recent Scans card to wipe the on-screen table and the in-memory cache (useful when starting a new session).
+---
 
-### API Endpoints
+## Production Deployment (Docker)
 
-| Method | Path | Description |
-| --- | --- | --- |
-| `GET` | `/` | Responsive dashboard UI (desktop and mobile). |
-| `GET` | `/recent` | Returns recent scans array `{code, when}` for the dashboard table. |
-| `POST` | `/scan` | Main ingest endpoint. Send JSON body `{"code": "..."}`. |
-| `GET` | `/tasklists` | Lists available Google Tasks lists (`id`, `title`) and the currently selected list ID. |
-| `POST` | `/tasklists/select` | Switches the active Google Tasks list. JSON body: `{"tasklist_id": "..."}`. |
-| `POST` | `/recent/clear` | Clears the in-memory recent scan cache and duplicate tracker. |
-| `POST` | `/ocr` | Accepts `multipart/form-data` with `image` (and optional `language`). Returns extracted text via Tesseract. |
-
-All responses are JSON except for the templated pages. Non-200 responses from `/scan` include an explanatory message that surfaces in the UI banner.
-
-Example OCR request:
+You can build locally or on your NAS:
 
 ```bash
-curl -X POST https://localhost:5000/ocr \
-  -F image=@label.jpg \
-  -F language=eng
+# from repo root
+docker build -t barcode-scanner:latest .
 ```
 
-Response:
+Example `docker-compose.yml` (Cloudflare terminates HTTPS, container serves HTTP on 5000):
 
-```json
-{ "ok": true, "text": "Recognized characters...", "language": "eng" }
+```yaml
+version: "3.8"
+services:
+  scanner:
+    image: barcode-scanner:latest
+    restart: unless-stopped
+    ports:
+      - "5050:5000"        # NAS:5050 → container:5000
+    environment:
+      PORT: "5000"
+      IMAGE_TAG: "${IMAGE_TAG:-dev}"
+    volumes:
+      - ./credentials.json:/app/credentials.json:ro
+      - ./token.json:/app/token.json
+      - ./certs:/app/certs               # optional if you terminate TLS inside
 ```
+
+Run/recreate:
+
+```bash
+docker compose down
+docker compose up -d --build
+```
+
+### TLS options
+
+1. **Cloudflare (recommended)**
+   - Keep container on HTTP (port 5000).  
+   - Proxy `scanner.gtemp1.com` ➜ `http://NAS-IP:5050`.  
+   - Use Cloudflare Access for optional auth, caching, WAF.  
+   - Result: browser sees HTTPS, container stays simple.
+
+2. **Direct TLS**
+   - Obtain cert/key (`Let’s Encrypt`, Hostinger SSL manager, mkcert).  
+   - Place as `certs/dsplay418.crt` + `certs/dsplay418.key`.  
+   - Container already launches gunicorn with `--certfile/--keyfile`; just mount the files read-only.
+
+3. **mkcert for LAN testing**
+   - `mkcert <nas-hostname>`  
+   - Install mkcert CA on iOS/Android for trusted HTTPS over LAN.
 
 ---
 
-## Behavior Details
+## Camera Requirements & Modes
 
-- **Barcode normalization** – Non-digits are stripped; 12-digit UPC-A codes are zero-padded to 13 digits to align with EAN-13.
-- **Duplicate suppression** – Scans of the same normalized code within 3 seconds are ignored, but still logged with a “dup ignored” marker for operator feedback.
-- **Recent cache** – The in-memory log stores both product title and barcode; clearing it via the dashboard also resets the duplicate detector.
-- **Product enrichment** – The server attempts an Open Food Facts lookup to populate the Google Task title and optional notes (brand, quantity, categories, image). Failures fall back to using the raw code without raising errors.
-- **Google Tasks integration** – Tokens are refreshed automatically when expired. If a task insertion fails (e.g., revoked authorization), the `/scan` endpoint returns an error so the operator can re-authenticate.
-- **Camera mode** – Uses `navigator.mediaDevices.getUserMedia` plus the `BarcodeDetector` API. Browsers must run on HTTPS (or localhost) and support the API to stream scans.
-- **Port freeing** – On macOS/Linux the app calls `lsof` to free the configured port before starting, which helps during development restarts.
+- Barcode mode uses the browser’s `BarcodeDetector` API. Unsupported browsers (older Safari) automatically fall back to OCR mode only.
+- OCR mode leverages pytesseract; the dashboard preprocesses captures (grayscale + contrast) before uploading to `/ocr`.
+- **HTTPS is mandatory** for mobile camera use. For WAN, proxy through Cloudflare/Let’s Encrypt. For LAN, trust mkcert or run via `ngrok`/Cloudflare Tunnel.
 
 ---
 
-## Development Notes
+## Maintenance
 
-- Delete `token.json` if you need to re-run the OAuth flow with a different Google account or scopes.
-- Update `ssl_context` in `app.py` if you replace certificates or switch to HTTP in a trusted network.
-- `barcode_favicon.ico` can be served by dropping it into your preferred static file pipeline if you expose favicons.
+| Task | Notes |
+| --- | --- |
+| Rotate Google tokens | Delete `token.json` and restart to re-auth. |
+| Update certs | If Cloudflare terminates HTTPS, handled automatically. For direct TLS (Let’s Encrypt/Hostinger), renew and copy new cert/key into `certs/`. |
+| Upgrades | `git pull`, rebuild image, `docker compose up -d --build`. |
+| Logs | `docker compose logs -f scanner`. |
 
 ---
 
 ## Troubleshooting
 
-- **Tasks no longer appear** – Revoked credentials cause `/scan` to emit an error banner. Delete `token.json` and restart to trigger OAuth; also confirm the selected list still exists.
-- **Mobile camera won’t start** – The device must load the page over HTTPS; use the provided TLS certs or set up your own trusted cert.
-- **Camera button disabled or errors** – Modern Chrome/Safari builds on HTTPS (or localhost) are required for `BarcodeDetector`. If unsupported, use the manual field or a USB scanner instead.
-
+| Symptom | Fix |
+| --- | --- |
+| **Camera idle / blocked** | Ensure page loads via HTTPS. On iOS, user gesture (Enable Camera button) is required if auto-start fails. Cloudflare HTTPS works out of the box. |
+| **Barcode mode disabled** | Browser lacks `BarcodeDetector` (older Safari). OCR mode still works; for live barcodes use desktop Chrome or implement QuaggaJS. |
+| **Tasks fail to create** | OAuth token expired or revoked → delete `token.json` and restart. Ensure Google Tasks API enabled. |
+| **Open Food Facts slow** | API is best-effort. Network failures fall back to barcode-as-title automatically. |
 
 ---
 
-## Android Camera Setup and HTTPS Trust Configuration
+## Directory Layout (key files)
 
-Modern mobile browsers require HTTPS to access the camera via the `getUserMedia` API (used by the barcode scanner UI). If you use a self-signed certificate (such as one generated by [mkcert](https://github.com/FiloSottile/mkcert)), Android devices will reject the connection unless you explicitly trust the mkcert CA root. This section explains how to install and trust the mkcert CA on Android so you can scan barcodes securely with your phone's camera.
-
-### Why HTTPS is Required
-
-The browser’s `getUserMedia` API—which powers the camera barcode scanner—**only works on HTTPS origins** (or `localhost`). This is a security restriction in all modern browsers to prevent unauthorized camera access. If you want to use your phone or tablet as a scanner on your local network, you must serve the app over HTTPS and ensure the certificate is trusted by your device.
-
-### Finding the mkcert CA Root Certificate
-
-On your development machine, locate the mkcert CA root certificate:
-
-```bash
-mkcert -CAROOT
+```
+.
+├─ app.py                 # Flask app / endpoints
+├─ static/templates/
+│   └── dashboard.html    # Single-page dashboard (JS inline)
+├─ docs/qrcodes.pdf
+├─ certs/                 # TLS certs for dev or direct TLS builds
+├─ credentials.json       # Google OAuth client (not committed)
+├─ token.json             # OAuth tokens (not committed)
+├─ dockerfile
+├─ docker-compose.yml     # sample compose (if using Docker)
+└─ NAS.md                 # Synology deployment notes
 ```
 
-This prints the directory where mkcert stores its root CA. Inside, you’ll find a file named `rootCA.pem`. This is the certificate you need to install on your Android device.
+---
 
-### Copying `rootCA.pem` to Android
-
-1. Copy the `rootCA.pem` file from your computer to your Android device. You can use email, cloud storage, Airdrop (on supported devices), or a USB cable.
-2. Make sure the file is accessible in your Android device’s Downloads or Files app.
-
-### Installing the CA Certificate on Android
-
-1. Open **Settings** on your Android device.
-2. Go to **Security & privacy**.
-3. Select **Encryption & credentials** (the name may vary by Android version).
-4. Tap **Install a certificate**.
-5. Choose **CA certificate**.
-6. When prompted, select the `rootCA.pem` file you copied.
-7. Confirm installation when prompted.
-
-After completing these steps, Android will trust all certificates issued by your mkcert CA—including the self-signed HTTPS certificate used by your Flask app (e.g., `https://192.168.178.45:5050` or any other local NAS/dev host URL).
-
-### Using the Barcode Scanner Web App
-
-Once the mkcert CA is installed and trusted:
-
-- You can open the barcode scanner web app on your Android device using HTTPS.
-- The browser will no longer show certificate warnings.
-- You can grant camera permissions and use the scanning UI without errors.
-
-> **Note:** Only install CA certificates that you generated yourself on your own machine using mkcert. **Never install untrusted CA files** or certificates from unknown sources, as this can compromise your device's security.
+Happy scanning! Adjust the dashboard styles, integrate QuaggaJS, or bolt on additional storage (Notion, Sheets) as needed.

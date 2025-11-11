@@ -689,8 +689,16 @@
 
         async function startCamera({ userInitiated = false } = {}) {
           if (cameraRunning) return;
-          if (!hasSecureCameraOrigin()) {
-            throw new Error("Camera access requires HTTPS or localhost.");
+          const secure = hasSecureCameraOrigin();
+          if (!secure) {
+            console.warn(
+              "Camera requested from a non-secure origin; mobile browsers may refuse access."
+            );
+            displayStatus(
+              cameraStatus,
+              "info",
+              "Attempting camera access over HTTP — if it fails, switch to HTTPS."
+            );
           }
           if (currentMode === "barcode" && !("BarcodeDetector" in window)) {
             throw new Error(

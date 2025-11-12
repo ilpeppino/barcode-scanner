@@ -38,6 +38,10 @@ SCOPES = ["https://www.googleapis.com/auth/tasks"]
 PORT = int(os.getenv("PORT", "5000"))
 TASKLIST_ID = os.getenv("TASKLIST_ID", "").strip()
 TASKLIST_TITLE = os.getenv("TASKLIST_TITLE", "").strip()
+CREDENTIALS_PATH = os.getenv("GOOGLE_CREDENTIALS", "credentials.json")
+TOKEN_PATH = os.getenv("GOOGLE_TOKEN", "token.json")
+CERT_PATH=os.getenv("CERT_PATH", "local.pem")
+CERT_KEY_PATH=os.getenv("CERT_KEY_PATH", "local-key.pem")
 
 # Tell Flask where the Jinja templates actually live (they're under static/templates).
 app = Flask(__name__, template_folder="static/templates", static_folder="static")
@@ -67,8 +71,8 @@ def free_port(port: int):
 
 # ---------- Google Tasks helpers ----------
 def get_creds():
-    if os.path.exists("token.json"):
-        creds = Credentials.from_authorized_user_file("token.json", SCOPES)
+    if os.path.exists(TOKEN_PATH):
+        creds = Credentials.from_authorized_user_file(TOKEN_PATH, SCOPES)
         if creds:
             if creds.valid:
                 return creds
@@ -82,7 +86,7 @@ def get_creds():
                 except Exception:
                     logger.exception("Failed to refresh Google OAuth token; falling back to full flow")
     # Run OAuth flow if no valid token found
-    flow = InstalledAppFlow.from_client_secrets_file("credentials.json", SCOPES)
+    flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS_PATH, SCOPES)
     creds = flow.run_local_server(port=0)
     with open("token.json", "w") as f:
         f.write(creds.to_json())
@@ -354,5 +358,5 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=PORT,
         debug=True,
-        ssl_context=("local.pem", "local-key.pem"),
+        ssl_context=(CERT_PATH, CERT_KEY_PATH),
     )

@@ -21,11 +21,9 @@ COPY . .
 ENV PORT=5000
 EXPOSE 5000
 
-# Run gunicorn WITH TLS (certs will be mounted at /app/certs)
 CMD ["gunicorn", \
-     "--certfile", "/app/certs/dsplay418.crt", \
-     "--keyfile", "/app/certs/dsplay418.key", \
-     "--bind", "0.0.0.0:5000", \
-     "--workers", "2", \
-     "--timeout", "120", \
-     "app:app"]
+    "--bind", "0.0.0.0:5000",\
+    "--workers", "2",\
+    "--timeout", "120",\
+    "app:app"]
+

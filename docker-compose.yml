@@ -1,16 +1,16 @@
 version: "3.8"
 services:
-  barcode-scanner:
-    container_name: barcode-scanner
-    image: ghcr.io/ilpeppino/barcode-scanner:stable # or build locally; see Option B
+  scanner:
+    image: ghcr.io/ilpeppino/barcode-scanner:stable # or :latest / :v1.3.0
     restart: unless-stopped
-    ports:
-      - "5050:5000" # HTTPS exposed on 5050
+    env_file:
+      - /volume1/NAS Shared Folder/secrets/barcode-scanner/.env
     volumes:
-      - ./certs:/app/certs:ro # mount the certs you created
-      - ./static:/app/static:ro # (your existing static files)
+      - /volume1/NAS Shared Folder/secrets/barcode-scanner/credentials.json:/app/credentials.json:ro
+      - /volume1/NAS Shared Folder/secrets/barcode-scanner/token.json:/app/token.json
+      - /volume1/NAS Shared Folder/secrets/barcode-scanner/dsplay418.crt:/app/certs/dsplay418.crt:ro
+      - /volume1/NAS Shared Folder/secrets/barcode-scanner/dsplay418.key:/app/certs/dsplay418.key:ro
+      - ./docs:/app/docs:ro
       - ./static/templates:/app/static/templates:ro
-      - ./token.json:/app/token.json:rw
-      - ./credentials.json:/app/credentials.json:ro
-    environment:
-      - PYTHONUNBUFFERED=1
+    ports:
+      - "5050:5000"

@@ -1,0 +1,16 @@
+version: "3.8"
+services:
+  barcode-scanner:
+    container_name: barcode-scanner
+    image: ghcr.io/ilpeppino/barcode-scanner:stable # or build locally; see Option B
+    restart: unless-stopped
+    ports:
+      - "5050:5000" # HTTPS exposed on 5050
+    volumes:
+      - ./certs:/app/certs:ro # mount the certs you created
+      - ./static:/app/static:ro # (your existing static files)
+      - ./static/templates:/app/static/templates:ro
+      - ./token.json:/app/token.json:rw
+      - ./credentials.json:/app/credentials.json:ro
+    environment:
+      - PYTHONUNBUFFERED=1

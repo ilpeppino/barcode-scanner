@@ -1,0 +1,14 @@
+.env
+.venv/
+__pycache__/
+.DS_Store
+credentials.json
+token.json
+*.pem
+.idea/
+.vscode/
+NAS.md
+node_modules
+certs/*.key
+certs/*.crt
+*.pem

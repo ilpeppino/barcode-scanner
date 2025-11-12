@@ -1,0 +1,1015 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Cameraful</title>
+    <link
+      rel="icon"
+      type="image/x-icon"
+      href="{{ url_for('static', filename='cameraful.png') }}"
+    />
+    <title>Cameraful</title>
+    <style>
+      :root {
+        font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
+          Roboto, sans-serif;
+        color: #1a202c;
+      }
+
+      body {
+        min-height: 100vh;
+        margin: 0;
+        background: linear-gradient(
+          150deg,
+          #000000 0%,
+          #191919 45%,
+          #2c2c2c 100%
+        );
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        color: inherit;
+      }
+
+      .shell {
+        width: min(960px, 100%);
+      }
+
+      .scanner-card {
+        background: #fff;
+        border-radius: 28px;
+        box-shadow: 0 15px 70px rgba(22, 6, 75, 0.25);
+        overflow: hidden;
+      }
+
+      .scanner-card header {
+        padding: 40px 36px 24px;
+        background: linear-gradient(135deg, #7c8cff 0%, #8a63f8 100%);
+        color: #fff;
+        text-align: center;
+      }
+
+      .scanner-card header h1 {
+        margin: 0;
+        font-size: 32px;
+        font-weight: 700;
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .scanner-card header p {
+        margin: 8px 0 0;
+        font-size: 16px;
+        opacity: 0.9;
+      }
+
+      .scanner-body {
+        padding: 32px 36px 40px;
+      }
+
+      .list-select {
+        margin-top: 18px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        color: #4a5568;
+        font-weight: 600;
+      }
+
+      .list-select select {
+        flex: 1;
+        border: 2px solid #e2e8f0;
+        border-radius: 14px;
+        padding: 12px;
+        font-size: 15px;
+        font-weight: 600;
+        background: #fff;
+        color: #2d3748;
+        outline: none;
+      }
+
+      .list-select select:focus {
+        border-color: #7c8cff;
+        box-shadow: 0 0 0 3px rgba(124, 140, 255, 0.2);
+      }
+
+      .token-input {
+        margin-top: 20px;
+        width: 100%;
+        border: 2px solid #e2e8f0;
+        border-radius: 14px;
+        padding: 14px 16px;
+        font-size: 15px;
+        outline: none;
+        transition: border 0.2s, box-shadow 0.2s;
+      }
+
+      .token-input:focus {
+        border-color: #7c8cff;
+        box-shadow: 0 0 0 3px rgba(124, 140, 255, 0.2);
+      }
+
+      .mode-toggle {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 16px;
+        margin-top: 24px;
+      }
+
+      .mode-option {
+        border: none;
+        border-radius: 18px;
+        padding: 16px;
+        font-size: 16px;
+        font-weight: 600;
+        cursor: pointer;
+        background: #f6f8ff;
+        color: #4a5568;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        transition: all 0.2s;
+        box-shadow: inset 0 0 0 2px rgba(124, 140, 255, 0.15);
+      }
+
+      .mode-option.disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+        box-shadow: inset 0 0 0 2px rgba(100, 116, 139, 0.25);
+      }
+
+      .mode-option span.icon {
+        font-size: 18px;
+      }
+
+      .mode-option.active {
+        background: linear-gradient(135deg, #6e7cfb 0%, #8659f5 100%);
+        color: #fff;
+        box-shadow: 0 10px 25px rgba(111, 95, 255, 0.35);
+      }
+
+      .primary-btn {
+        width: 100%;
+        margin-top: 24px;
+        border: none;
+        border-radius: 18px;
+        padding: 16px;
+        font-size: 16px;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        color: #fff;
+        background: linear-gradient(135deg, #6e7cfb 0%, #8659f5 100%);
+        cursor: pointer;
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+        box-shadow: 0 12px 30px rgba(111, 95, 255, 0.35);
+      }
+
+      .primary-btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        box-shadow: none;
+      }
+
+      .primary-btn:not(:disabled):hover {
+        transform: translateY(-2px);
+      }
+
+      .secondary-btn {
+        margin-top: 14px;
+        background: transparent;
+        border: 2px solid rgba(124, 140, 255, 0.25);
+        color: #5a67d8;
+        border-radius: 14px;
+        font-weight: 600;
+        padding: 10px 16px;
+        cursor: pointer;
+        transition: border-color 0.2s, color 0.2s;
+      }
+
+      .secondary-btn.hidden {
+        display: none;
+      }
+
+      .secondary-btn:hover {
+        border-color: rgba(124, 140, 255, 0.55);
+        color: #4338ca;
+      }
+
+      .camera-wrap {
+        position: relative;
+        width: min(100%, 480px);
+        margin: 24px auto 0;
+      }
+
+      .camera-wrap::before,
+      .camera-wrap::after {
+        content: "";
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        pointer-events: none;
+        border: 2px dashed rgba(255, 255, 255, 0.45);
+        border-radius: 18px;
+        width: 70%;
+        height: 75%;
+      }
+
+      .camera-wrap::after {
+        width: 40%;
+        height: 20%;
+        border-radius: 12px;
+      }
+
+      .camera-wrap.portrait::before {
+        width: 60%;
+        height: 82%;
+      }
+
+      .camera-wrap.portrait::after {
+        width: 45%;
+        height: 28%;
+      }
+
+      video {
+        width: 100%;
+        aspect-ratio: 16 / 9;
+        border-radius: 24px;
+        background: #0d1b2a;
+        object-fit: cover;
+        display: block;
+      }
+
+      video.portrait {
+        aspect-ratio: 9 / 16;
+      }
+
+      video.hidden {
+        display: none;
+      }
+
+      video.capture-enabled {
+        cursor: pointer;
+      }
+
+      .status-line {
+        margin-top: 12px;
+        font-size: 14px;
+        color: #4a5568;
+        min-height: 1.4em;
+      }
+
+      .status-line.ok {
+        color: #047857;
+      }
+
+      .status-line.err {
+        color: #c53030;
+      }
+
+      .status-line.info {
+        color: #4a5568;
+      }
+
+      #msg {
+        margin-top: 12px;
+        border-radius: 12px;
+        padding: 12px 16px;
+        font-size: 14px;
+        font-weight: 600;
+        display: none;
+      }
+
+      #msg.ok {
+        display: block;
+        background: #c6f6d5;
+        color: #22543d;
+      }
+
+      #msg.err {
+        display: block;
+        background: #fed7d7;
+        color: #742a2a;
+      }
+
+      .info-panel {
+        margin-top: 32px;
+        border-radius: 20px;
+        border: 2px solid #edf2f7;
+        padding: 20px;
+        background: #fff;
+      }
+
+      .info-panel.hidden {
+        display: none;
+      }
+
+      .info-panel h4 {
+        margin: 0 0 12px;
+        font-size: 18px;
+        color: #1a202c;
+      }
+
+      .empty-copy {
+        margin: 0;
+        color: #96a1b3;
+        font-weight: 500;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+
+      th,
+      td {
+        text-align: left;
+        padding: 12px 10px;
+        font-size: 14px;
+      }
+
+      thead {
+        color: #4a5568;
+        text-transform: uppercase;
+        font-size: 12px;
+        letter-spacing: 0.5px;
+      }
+
+      tbody tr + tr {
+        border-top: 1px solid #edf2f7;
+      }
+
+      .code-cell {
+        font-family: "JetBrains Mono", "Courier New", monospace;
+        color: #5a67d8;
+        font-weight: 600;
+      }
+
+      #ocr-form {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-bottom: 12px;
+      }
+
+      #ocr-form input[type="file"],
+      #ocr-language {
+        flex: 1;
+        min-width: 200px;
+        border: 2px dashed #d6dcf4;
+        border-radius: 14px;
+        padding: 12px;
+        background: #f8f9ff;
+        font-weight: 600;
+        color: #4a5568;
+      }
+
+      #ocr-output {
+        width: 100%;
+        min-height: 180px;
+        border-radius: 16px;
+        border: 2px solid #e2e8f0;
+        padding: 14px;
+        font-family: "JetBrains Mono", "Courier New", monospace;
+        font-size: 14px;
+        background: #f7fafc;
+        resize: vertical;
+      }
+
+      footer {
+        text-align: center;
+        margin-top: 18px;
+        opacity: 0.6;
+        font-size: 13px;
+      }
+
+      @media (max-width: 720px) {
+        .scanner-card header {
+          padding: 32px 20px 18px;
+        }
+        .scanner-body {
+          padding: 26px 20px 32px;
+        }
+        .mode-toggle {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <div class="scanner-card">
+        <header>
+          <h1>Cameraful</h1>
+          <p>Scan barcodes or extract text from documents</p>
+        </header>
+        <div class="scanner-body">
+          <div class="mode-toggle" id="mode-toggle">
+            <button class="mode-option active" data-mode="barcode">
+              <span class="icon">📊</span>
+              <span>Barcode Scanner</span>
+            </button>
+            <button class="mode-option" data-mode="ocr">
+              <span class="icon">📄</span>
+              <span>Document OCR</span>
+            </button>
+          </div>
+
+          <div class="camera-wrap hidden" id="camera-wrap">
+            <video
+              id="camera-stream"
+              playsinline
+              muted
+              tabindex="0"
+              aria-label="Camera preview"
+            ></video>
+          </div>
+
+          <div id="camera-status" class="status-line info">
+            Camera idle. Select a mode to begin.
+          </div>
+          <button id="camera-permission-btn" class="secondary-btn hidden">
+            Enable Camera
+          </button>
+          <div id="msg"></div>
+
+          <div class="info-panel" id="recent-card">
+            <h4>Recent Scans</h4>
+            <table id="t">
+              <thead>
+                <tr>
+                  <th>Timestamp</th>
+                  <th>Product</th>
+                  <th>Barcode</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td colspan="3">
+                    <p class="empty-copy">
+                      No scans yet. Start the camera to begin scanning!
+                    </p>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <button
+              id="clear-recent-btn"
+              class="secondary-btn"
+              style="margin-top: 18px"
+            >
+              Clear list
+            </button>
+          </div>
+
+          <div class="info-panel hidden" id="ocr-card">
+            <h4>Extracted Text</h4>
+            <p class="empty-copy" id="ocr-placeholder">
+              No text extracted yet. Start the camera, then tap the preview to
+              capture a page.
+            </p>
+
+            <div id="ocr-status" class="status-line info">
+              Tap the preview to capture text.
+            </div>
+            <textarea
+              id="ocr-output"
+              readonly
+              placeholder="Recognized text will appear here..."
+            ></textarea>
+          </div>
+        </div>
+      </div>
+      <footer>build: {{ version }}</footer>
+    </div>
+
+    <script type="module">
+      window.addEventListener("DOMContentLoaded", () => {
+        const messageEl = document.getElementById("msg");
+        const tbody = document.querySelector("#t tbody");
+        const clearButton = document.getElementById("clear-recent-btn");
+        const cameraStatus = document.getElementById("camera-status");
+        const cameraPermissionBtn = document.getElementById(
+          "camera-permission-btn"
+        );
+        const cameraWrap = document.getElementById("camera-wrap");
+        const cameraVideo = document.getElementById("camera-stream");
+        const modeButtons = document.querySelectorAll("[data-mode]");
+        const recentCard = document.getElementById("recent-card");
+        const ocrCard = document.getElementById("ocr-card");
+        const ocrStatus = document.getElementById("ocr-status");
+        const ocrOutput = document.getElementById("ocr-output");
+        const ocrPlaceholder = document.getElementById("ocr-placeholder");
+        const playShutter = createShutterPlayer();
+
+        let cameraRunning = false;
+        let cameraStream = null;
+        let cameraDetector = null;
+        let barcodeFrameId = null;
+        let lastBarcodeValue = "";
+        let lastBarcodeTime = 0;
+        let ocrCapturePending = false;
+        const isIOS = /iPad|iPhone|iPod/i.test(navigator.userAgent);
+        const barcodeSupported = "BarcodeDetector" in window;
+        let currentMode = barcodeSupported ? "barcode" : "ocr";
+        const BARCODE_FORMATS = [
+          "ean_13",
+          "ean_8",
+          "code_128",
+          "code_39",
+          "itf",
+          "qr_code",
+        ];
+
+        function displayStatus(el, state, text) {
+          if (!el) return;
+          if (el === messageEl) {
+            const cls = state === "ok" ? "ok" : "err";
+            el.textContent = text;
+            el.className = cls;
+            el.style.display = "block";
+            if (cls === "ok") {
+              setTimeout(() => {
+                if (el.className === "ok") el.style.display = "none";
+              }, 3000);
+            }
+            return;
+          }
+          el.textContent = text;
+          el.classList.remove("ok", "err", "info");
+          if (state) el.classList.add(state);
+        }
+
+        function createShutterPlayer() {
+          const AudioContext =
+            window.AudioContext || window.webkitAudioContext || null;
+          if (!AudioContext) {
+            return () => {};
+          }
+          let ctx = null;
+          return () => {
+            try {
+              ctx = ctx || new AudioContext();
+              if (ctx.state === "suspended") ctx.resume();
+              const osc = ctx.createOscillator();
+              const gain = ctx.createGain();
+              osc.type = "triangle";
+              osc.frequency.value = 900;
+              const now = ctx.currentTime;
+              gain.gain.setValueAtTime(0.0001, now);
+              gain.gain.exponentialRampToValueAtTime(0.4, now + 0.01);
+              gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.08);
+              osc.connect(gain).connect(ctx.destination);
+              osc.start(now);
+              osc.stop(now + 0.08);
+            } catch (err) {
+              console.debug("Unable to play shutter sound", err);
+            }
+          };
+        }
+
+        async function refreshRecent() {
+          if (!tbody) return;
+          try {
+            const res = await fetch("/recent");
+            const data = await res.json();
+            if (!Array.isArray(data) || !data.length) {
+              tbody.innerHTML =
+                '<tr><td colspan="3"><p class="empty-copy">No scans yet. Start the camera to begin scanning!</p></td></tr>';
+              return;
+            }
+            tbody.innerHTML = data
+              .map(
+                (x) =>
+                  `<tr><td>${x.when}</td><td>${
+                    x.title || "—"
+                  }</td><td class="code-cell">${x.code}</td></tr>`
+              )
+              .join("");
+          } catch (err) {
+            console.error("Failed to refresh recent scans", err);
+          }
+        }
+
+        async function postScan(code, statusEl) {
+          const target = statusEl || messageEl;
+          if (!target) return false;
+          try {
+            const res = await fetch("/scan", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ code }),
+            });
+            const data = await res.json();
+            const ok = res.ok && data.ok;
+            const prefix = ok ? "✓ " : "✗ ";
+            displayStatus(
+              target,
+              ok ? "ok" : "err",
+              prefix + (data.message || JSON.stringify(data))
+            );
+            if (ok) refreshRecent();
+            return ok;
+          } catch (err) {
+            console.error("Failed to submit scan", err);
+            displayStatus(
+              target,
+              "err",
+              "✗ " + (err.message || "Unable to submit scan")
+            );
+            return false;
+          }
+        }
+
+        async function runOcrWithBlob(blob) {
+          if (!ocrStatus) return;
+          if (!blob) {
+            displayStatus(ocrStatus, "err", "⚠️ No image provided.");
+            return;
+          }
+          const formData = new FormData();
+          formData.append("image", blob, "capture.png");
+          formData.append("language", "eng");
+
+          displayStatus(ocrStatus, "info", "Processing image…");
+          if (ocrOutput) ocrOutput.value = "";
+
+          try {
+            const res = await fetch("/ocr", {
+              method: "POST",
+              body: formData,
+            });
+            const data = await res.json();
+            if (!res.ok || !data.ok) {
+              throw new Error(data.message || "OCR failed");
+            }
+            if (ocrPlaceholder) ocrPlaceholder.classList.add("hidden");
+            displayStatus(ocrStatus, "ok", "✓ Text extracted successfully");
+            if (ocrOutput) {
+              ocrOutput.value =
+                (data.text && data.text.trim()) || "(No text detected)";
+            }
+          } catch (err) {
+            console.error("OCR request failed", err);
+            displayStatus(
+              ocrStatus,
+              "err",
+              "✗ " + (err.message || "Unable to process image")
+            );
+          }
+        }
+
+        function hasSecureCameraOrigin() {
+          if (window.isSecureContext) return true;
+          return ["localhost", "127.0.0.1"].includes(window.location.hostname);
+        }
+
+        function applyModeLayout() {
+          const isBarcode = currentMode === "barcode";
+          if (recentCard) recentCard.classList.toggle("hidden", !isBarcode);
+          if (ocrCard) ocrCard.classList.toggle("hidden", isBarcode);
+          displayStatus(
+            cameraStatus,
+            "info",
+            isBarcode
+              ? "Camera idle. Align a barcode within the guides."
+              : "Camera idle. Tap the preview to capture text."
+          );
+          modeButtons.forEach((btn) =>
+            btn.classList.toggle("active", btn.dataset.mode === currentMode)
+          );
+          if (cameraVideo) {
+            cameraVideo.classList.toggle("portrait", !isBarcode);
+            cameraVideo.classList.toggle("capture-enabled", !isBarcode);
+          }
+          if (cameraWrap) {
+            cameraWrap.classList.toggle("portrait", !isBarcode);
+          }
+        }
+
+        function stopCamera(reason = "Camera stopped.") {
+          if (barcodeFrameId) {
+            cancelAnimationFrame(barcodeFrameId);
+            barcodeFrameId = null;
+          }
+          if (cameraStream) {
+            cameraStream.getTracks().forEach((track) => track.stop());
+            cameraStream = null;
+          }
+          cameraRunning = false;
+          if (cameraVideo && cameraWrap) {
+            cameraVideo.pause();
+            cameraVideo.srcObject = null;
+            cameraWrap.classList.add("hidden");
+          }
+          displayStatus(cameraStatus, "info", reason);
+        }
+
+        function legacyGetUserMedia(constraints) {
+          const legacy =
+            navigator.getUserMedia ||
+            navigator.webkitGetUserMedia ||
+            navigator.mozGetUserMedia ||
+            navigator.msGetUserMedia;
+          if (!legacy) return null;
+          return new Promise((resolve, reject) =>
+            legacy.call(navigator, constraints, resolve, reject)
+          );
+        }
+
+        async function requestCameraStream(constraints) {
+          if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+            return navigator.mediaDevices.getUserMedia(constraints);
+          }
+          const legacy = legacyGetUserMedia({
+            video: constraints.video || constraints,
+            audio: false,
+          });
+          if (legacy) return legacy;
+          throw new Error(
+            "Camera API unavailable in this browser (consider updating iOS/Safari)."
+          );
+        }
+
+        async function startCamera({ userInitiated = false } = {}) {
+          if (cameraRunning) return;
+          const secure = hasSecureCameraOrigin();
+          if (!secure) {
+            console.warn(
+              "Camera requested from a non-secure origin; mobile browsers may refuse access."
+            );
+            displayStatus(
+              cameraStatus,
+              "info",
+              "Attempting camera access over HTTP — if it fails, switch to HTTPS."
+            );
+          }
+          if (currentMode === "barcode" && !("BarcodeDetector" in window)) {
+            throw new Error(
+              "BarcodeDetector API not supported. Use a modern Chrome or Safari."
+            );
+          }
+          const constraints =
+            currentMode === "barcode"
+              ? {
+                  video: {
+                    facingMode: { ideal: "environment" },
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 },
+                  },
+                }
+              : {
+                  video: {
+                    facingMode: { ideal: "environment" },
+                    width: { ideal: 720 },
+                    height: { ideal: 1280 },
+                  },
+                };
+          if (cameraPermissionBtn) {
+            cameraPermissionBtn.classList.add("hidden");
+          }
+          try {
+            cameraStream = await requestCameraStream(constraints);
+          } catch (err) {
+            if (!userInitiated && cameraPermissionBtn) {
+              cameraPermissionBtn.classList.remove("hidden");
+            }
+            throw err;
+          }
+          cameraVideo.srcObject = cameraStream;
+          if (cameraWrap) cameraWrap.classList.remove("hidden");
+          try {
+            await cameraVideo.play();
+          } catch (err) {
+            console.warn("Camera playback warning", err);
+          }
+          cameraRunning = true;
+          displayStatus(
+            cameraStatus,
+            "info",
+            currentMode === "barcode"
+              ? "Camera active. Align a barcode within the guides."
+              : "Camera active. Tap the preview to capture text."
+          );
+          if (currentMode === "barcode") {
+            startBarcodeLoop();
+          }
+        }
+
+        async function captureFrame() {
+          if (!cameraVideo || !cameraVideo.srcObject) {
+            throw new Error("Camera not ready yet.");
+          }
+          const width = cameraVideo.videoWidth || 640;
+          const height = cameraVideo.videoHeight || 480;
+          if (!width || !height) {
+            throw new Error("Camera feed not ready. Please wait a moment.");
+          }
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+          canvas.getContext("2d").drawImage(cameraVideo, 0, 0, width, height);
+          const blob = await new Promise((resolve) =>
+            canvas.toBlob(resolve, "image/png")
+          );
+          if (!blob) {
+            throw new Error("Unable to capture camera frame.");
+          }
+          return { canvas, blob };
+        }
+
+        async function processBarcodeCapture() {
+          if (!("BarcodeDetector" in window)) {
+            throw new Error(
+              "BarcodeDetector API not supported in this browser."
+            );
+          }
+          if (!cameraDetector) {
+            cameraDetector = new BarcodeDetector({ formats: BARCODE_FORMATS });
+          }
+          const barcodes = await cameraDetector.detect(cameraVideo);
+          if (!barcodes.length) {
+            return false;
+          }
+          const code = (barcodes[0].rawValue || "").trim();
+          if (!code) {
+            return false;
+          }
+          const now = Date.now();
+          if (code === lastBarcodeValue && now - lastBarcodeTime < 2000) {
+            return false;
+          }
+          lastBarcodeValue = code;
+          lastBarcodeTime = now;
+          const ok = await postScan(code, cameraStatus);
+          if (!ok) {
+            throw new Error("Failed to process barcode.");
+          }
+          return true;
+        }
+
+        async function processOcrCapture() {
+          const { blob } = await captureFrame();
+          playShutter();
+          await runOcrWithBlob(blob);
+        }
+
+        async function handlePreviewClick() {
+          if (currentMode !== "ocr" || ocrCapturePending) return;
+          if (!cameraRunning) {
+            try {
+              await startCamera({ userInitiated: true });
+            } catch (err) {
+              displayStatus(cameraStatus, "err", err.message);
+              return;
+            }
+          }
+          ocrCapturePending = true;
+          try {
+            await processOcrCapture();
+          } catch (err) {
+            displayStatus(ocrStatus, "err", err.message || "Capture failed.");
+          } finally {
+            ocrCapturePending = false;
+          }
+        }
+
+        function handlePreviewKeydown(evt) {
+          if (currentMode !== "ocr") return;
+          if (evt.key === " " || evt.key === "Enter") {
+            evt.preventDefault();
+            handlePreviewClick();
+          }
+        }
+
+        function startBarcodeLoop() {
+          const tick = async () => {
+            if (!cameraRunning || currentMode !== "barcode") {
+              return;
+            }
+            try {
+              await processBarcodeCapture();
+            } catch (err) {
+              if (err && err.message) {
+                console.debug("Barcode detection", err.message);
+              }
+            }
+            barcodeFrameId = requestAnimationFrame(tick);
+          };
+          if (barcodeFrameId) cancelAnimationFrame(barcodeFrameId);
+          barcodeFrameId = requestAnimationFrame(tick);
+        }
+
+        function handleModeChange(mode) {
+          if (mode === currentMode) return;
+          if (mode === "barcode" && !barcodeSupported) {
+            displayStatus(
+              cameraStatus,
+              "err",
+              "BarcodeDetector is not available on this device. Use Document OCR or a desktop browser."
+            );
+            return;
+          }
+          const wasRunning = cameraRunning;
+          stopCamera("Mode changed; camera stopped.");
+          currentMode = mode;
+          applyModeLayout();
+          if (wasRunning) {
+            startCamera().catch((err) =>
+              displayStatus(cameraStatus, "err", err.message)
+            );
+          }
+        }
+
+        refreshRecent();
+        setInterval(refreshRecent, 1500);
+        applyModeLayout();
+        if (!barcodeSupported) {
+          const barcodeBtn = document.querySelector('[data-mode="barcode"]');
+          if (barcodeBtn) {
+            barcodeBtn.classList.add("disabled");
+            barcodeBtn.title =
+              "Barcode scanning is not supported on this browser. Use Document OCR or a desktop browser.";
+          }
+        }
+
+        if (clearButton) {
+          clearButton.addEventListener("click", async () => {
+            try {
+              const res = await fetch("/recent/clear", { method: "POST" });
+              const data = await res.json();
+              if (!res.ok || !data.ok) throw new Error("Unable to clear list");
+              refreshRecent();
+              displayStatus(messageEl, "ok", "✓ Recent list cleared");
+            } catch (err) {
+              console.error("Failed to clear recent list", err);
+              displayStatus(
+                messageEl,
+                "err",
+                "✗ " + (err.message || "Failed to clear list")
+              );
+            }
+          });
+        }
+
+        modeButtons.forEach((btn) =>
+          btn.addEventListener("click", () =>
+            handleModeChange(btn.dataset.mode)
+          )
+        );
+
+        if (cameraVideo) {
+          cameraVideo.addEventListener("click", handlePreviewClick);
+          cameraVideo.addEventListener("keydown", handlePreviewKeydown);
+        }
+
+        if (cameraPermissionBtn) {
+          cameraPermissionBtn.addEventListener("click", async () => {
+            cameraPermissionBtn.classList.add("hidden");
+            try {
+              await startCamera({ userInitiated: true });
+            } catch (err) {
+              displayStatus(cameraStatus, "err", err.message);
+            }
+          });
+        }
+
+        window.addEventListener("beforeunload", () => {
+          if (cameraRunning) stopCamera();
+        });
+        document.addEventListener("visibilitychange", () => {
+          if (document.hidden && cameraRunning) stopCamera();
+        });
+
+        if (!isIOS) {
+          startCamera()
+            .then(() => {
+              if (cameraPermissionBtn)
+                cameraPermissionBtn.classList.add("hidden");
+            })
+            .catch((err) => {
+              if (cameraPermissionBtn)
+                cameraPermissionBtn.classList.remove("hidden");
+              displayStatus(
+                cameraStatus,
+                "err",
+                err.message ||
+                  "Camera blocked. Tap Enable Camera to allow access."
+              );
+            });
+        } else if (cameraPermissionBtn) {
+          cameraPermissionBtn.classList.remove("hidden");
+          displayStatus(
+            cameraStatus,
+            "info",
+            "Tap Enable Camera to grant access on iOS browsers."
+          );
+        }
+      });
+    </script>
+  </body>
+</html>

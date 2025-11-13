@@ -28,7 +28,7 @@ Workflow:
 | --- | --- |
 | Python 3.10+ (for local dev) | Repo tested with 3.11. |
 | Tesseract OCR binary | `brew install tesseract` (macOS) / `apt install tesseract-ocr` (Debian/Ubuntu). Needed even in Docker builds. |
-| Google Cloud project | Enable **Google Tasks API**, create an OAuth *Desktop app* client, download `credentials.json`. |
+| Google Cloud project | Enable **Google Tasks API**, create an OAuth *Web application* client, add redirect URIs, and paste the Client ID/secret into `.env`. |
 | HTTPS access for cameras | Browsers only grant camera access on HTTPS or `localhost`. For WAN/LAN access use Cloudflare, Let’s Encrypt, mkcert, etc. |
 | Domain/DNS (optional but recommended) | Example: `gtemp1.com` on Hostinger with Cloudflare proxying to your NAS. |
 
@@ -74,9 +74,11 @@ Running `pip install -r requirements.txt` installs the exact versions above.
    cp .env.example .env
    # edit PORT, TASKLIST_TITLE, etc.
    ```
-4. **Drop Google OAuth files**
-   - `credentials.json` → repo root.  
-   - First run will produce `token.json` (store it; delete to re-auth).
+4. **Configure OAuth + secrets**
+   ```bash
+   cp .env.example .env
+   # fill FLASK_SECRET, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, etc.
+   ```
 5. **Start dev server**
    ```bash
    python app.py
@@ -91,10 +93,11 @@ Running `pip install -r requirements.txt` installs the exact versions above.
 ## Google OAuth – Step-by-step
 
 1. In Google Cloud Console → APIs & Services → Enable APIs → **Google Tasks API**.
-2. Credentials → Create Credentials → *OAuth client ID* → Application type **Desktop**.
-3. Download the JSON, rename to `credentials.json`, place in repo root.
-4. Run `python app.py` once; browser opens Google consent. Complete flow → `token.json` is generated.
-5. Protect `credentials.json`/`token.json` (never commit them). In Docker, map them via volumes.
+2. Configure the OAuth consent screen (External), add yourself to “Test users”, and save.
+3. Credentials → Create Credentials → *OAuth client ID* → Application type **Web application**.
+4. Add Authorized redirect URIs for every environment you plan to run (e.g. `https://localhost:5000/auth/callback`, `https://scanner.gtemp1.com/auth/callback`).
+5. Copy the Client ID/secret into `.env` (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`). If you need a fixed callback (e.g. behind Cloudflare), set `GOOGLE_AUTH_REDIRECT_URI`.
+6. Start the app and visit `/login` — users authenticate in the browser, and the token is stored in their session automatically.
 
 ---
 
@@ -115,15 +118,13 @@ services:
   scanner:
     image: barcode-scanner:latest
     restart: unless-stopped
-    ports:
-      - "5050:5000"        # NAS:5050 → container:5000
+    env_file:
+      - ./.env
     environment:
       PORT: "5000"
       IMAGE_TAG: "${IMAGE_TAG:-dev}"
-    volumes:
-      - ./credentials.json:/app/credentials.json:ro
-      - ./token.json:/app/token.json
-      - ./certs:/app/certs               # optional if you terminate TLS inside
+    ports:
+      - "5050:5000"        # NAS:5050 → container:5000
 ```
 
 Run/recreate:
@@ -164,7 +165,7 @@ docker compose up -d --build
 
 | Task | Notes |
 | --- | --- |
-| Rotate Google tokens | Delete `token.json` and restart to re-auth. |
+| Rotate Google OAuth client | Update `GOOGLE_CLIENT_ID/SECRET`, redeploy, and users will be prompted to sign in again. |
 | Update certs | If Cloudflare terminates HTTPS, handled automatically. For direct TLS (Let’s Encrypt/Hostinger), renew and copy new cert/key into `certs/`. |
 | Upgrades | `git pull`, rebuild image, `docker compose up -d --build`. |
 | Logs | `docker compose logs -f scanner`. |
@@ -177,7 +178,7 @@ docker compose up -d --build
 | --- | --- |
 | **Camera idle / blocked** | Ensure page loads via HTTPS. On iOS, user gesture (Enable Camera button) is required if auto-start fails. Cloudflare HTTPS works out of the box. |
 | **Barcode mode disabled** | Browser lacks `BarcodeDetector` (older Safari). OCR mode still works; for live barcodes use desktop Chrome or implement QuaggaJS. |
-| **Tasks fail to create** | OAuth token expired or revoked → delete `token.json` and restart. Ensure Google Tasks API enabled. |
+| **Tasks fail to create** | User session expired or Google revoked access → hit **Logout** and sign in again. Ensure Google Tasks API is enabled. |
 | **Open Food Facts slow** | API is best-effort. Network failures fall back to barcode-as-title automatically. |
 
 ---
@@ -191,8 +192,7 @@ docker compose up -d --build
 │   └── dashboard.html    # Single-page dashboard (JS inline)
 ├─ docs/qrcodes.pdf
 ├─ certs/                 # TLS certs for dev or direct TLS builds
-├─ credentials.json       # Google OAuth client (not committed)
-├─ token.json             # OAuth tokens (not committed)
+├─ .env.example           # sample config (FLASK_SECRET, Google OAuth, etc.)
 ├─ dockerfile
 ├─ docker-compose.yml     # sample compose (if using Docker)
 └─ NAS.md                 # Synology deployment notes

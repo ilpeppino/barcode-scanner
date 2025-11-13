@@ -6,10 +6,6 @@ services:
     env_file:
       - /volume1/NAS Shared Folder/secrets/barcode-scanner/.env
     volumes:
-      - /volume1/NAS Shared Folder/secrets/barcode-scanner/credentials.json:/app/credentials.json:ro
-      - /volume1/NAS Shared Folder/secrets/barcode-scanner/token.json:/app/token.json
-      - /volume1/NAS Shared Folder/secrets/barcode-scanner/dsplay418.crt:/app/certs/dsplay418.crt:ro
-      - /volume1/NAS Shared Folder/secrets/barcode-scanner/dsplay418.key:/app/certs/dsplay418.key:ro
       - ./docs:/app/docs:ro
       - ./static/templates:/app/static/templates:ro
     ports:

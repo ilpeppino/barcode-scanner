@@ -1,12 +1,21 @@
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 
-from flask import Flask, request, jsonify, render_template
+from flask import (
+    Flask,
+    request,
+    jsonify,
+    render_template,
+    session,
+    redirect,
+    url_for,
+    abort,
+)
 from dotenv import load_dotenv
 from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from google.auth.transport.requests import Request
+from authlib.integrations.flask_client import OAuth
 
 import time
 import re
@@ -36,15 +45,82 @@ load_dotenv()
 
 SCOPES = ["https://www.googleapis.com/auth/tasks"]
 PORT = int(os.getenv("PORT", "5000"))
-TASKLIST_ID = os.getenv("TASKLIST_ID", "").strip()
 TASKLIST_TITLE = os.getenv("TASKLIST_TITLE", "").strip()
-CREDENTIALS_PATH = os.getenv("GOOGLE_CREDENTIALS", "credentials.json")
-TOKEN_PATH = os.getenv("GOOGLE_TOKEN", "token.json")
-CERT_PATH=os.getenv("CERT_PATH", "local.pem")
-CERT_KEY_PATH=os.getenv("CERT_KEY_PATH", "local-key.pem")
+FLASK_SECRET = os.getenv("FLASK_SECRET", "").strip()
+if not FLASK_SECRET:
+    raise RuntimeError("FLASK_SECRET must be set for session handling.")
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "").strip()
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "").strip()
+if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
+    raise RuntimeError("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are required.")
+GOOGLE_AUTH_REDIRECT_URI = os.getenv("GOOGLE_AUTH_REDIRECT_URI", "").strip()
+GOOGLE_SCOPES = ["openid", "email", "profile"] + SCOPES
+GOOGLE_TOKEN_URI = "https://oauth2.googleapis.com/token"
+GOOGLE_API_BASE = "https://accounts.google.com/.well-known/openid-configuration"
+CERT_PATH = os.getenv("CERT_PATH", "local.pem").strip()
+CERT_KEY_PATH = os.getenv("CERT_KEY_PATH", "local-key.pem").strip()
 
 # Tell Flask where the Jinja templates actually live (they're under static/templates).
 app = Flask(__name__, template_folder="static/templates", static_folder="static")
+app.secret_key = FLASK_SECRET
+
+oauth = OAuth(app)
+oauth.register(
+    name="google",
+    client_id=GOOGLE_CLIENT_ID,
+    client_secret=GOOGLE_CLIENT_SECRET,
+    server_metadata_url=GOOGLE_API_BASE,
+    client_kwargs={
+        "scope": " ".join(GOOGLE_SCOPES),
+        "prompt": "consent",
+        "access_type": "offline",
+    },
+)
+
+PUBLIC_ENDPOINTS = {"login", "auth_callback", "logout", "static", "version"}
+
+
+def is_logged_in() -> bool:
+    return "google_token" in session
+
+
+@app.before_request
+def enforce_login():
+    if request.endpoint in PUBLIC_ENDPOINTS or request.endpoint is None:
+        return
+    if not is_logged_in():
+        return redirect(url_for("login"))
+
+
+def _redirect_uri():
+    if GOOGLE_AUTH_REDIRECT_URI:
+        return GOOGLE_AUTH_REDIRECT_URI
+    return url_for("auth_callback", _external=True)
+
+
+@app.route("/login")
+def login():
+    return oauth.google.authorize_redirect(_redirect_uri())
+
+
+@app.route("/auth/callback")
+def auth_callback():
+    token = oauth.google.authorize_access_token()
+    session["google_token"] = token
+    userinfo = token.get("userinfo")
+    if not userinfo:
+        resp = oauth.google.get("userinfo")
+        resp.raise_for_status()
+        userinfo = resp.json()
+    session["user_email"] = userinfo.get("email")
+    session.pop("tasklist_id", None)
+    return redirect(url_for("home"))
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
 
 
 def free_port(port: int):
@@ -70,33 +146,11 @@ def free_port(port: int):
 
 
 # ---------- Google Tasks helpers ----------
-def get_creds():
-    if os.path.exists(TOKEN_PATH):
-        creds = Credentials.from_authorized_user_file(TOKEN_PATH, SCOPES)
-        if creds:
-            if creds.valid:
-                return creds
-            if creds.expired and creds.refresh_token:
-                try:
-                    creds.refresh(Request())
-                    with open("token.json", "w") as f:
-                        f.write(creds.to_json())
-                    logger.info("Refreshed stored Google OAuth token")
-                    return creds
-                except Exception:
-                    logger.exception("Failed to refresh Google OAuth token; falling back to full flow")
-    # Run OAuth flow if no valid token found
-    flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS_PATH, SCOPES)
-    creds = flow.run_local_server(port=0)
-    with open("token.json", "w") as f:
-        f.write(creds.to_json())
-    return creds
-
-
 def get_tasks_service():
-    creds = get_creds()
+    creds = get_user_credentials()
     return build("tasks", "v1", credentials=creds, cache_discovery=False)
-  
+
+
 def get_tasklist_title():
     """Return the title of the active Google Task list (best-effort)."""
     try:
@@ -118,16 +172,62 @@ def list_tasklists():
 
 
 def ensure_tasklist_id(service):
-    global TASKLIST_ID
-    if TASKLIST_ID:
-        return TASKLIST_ID
+    tasklist_id = session.get("tasklist_id")
+    if tasklist_id:
+        return tasklist_id
     lists = service.tasklists().list(maxResults=10).execute()
     if "items" in lists and lists["items"]:
-        TASKLIST_ID = lists["items"][0]["id"]
-        return TASKLIST_ID
-    created = service.tasklists().insert(body={"title": "Tasks"}).execute()
-    TASKLIST_ID = created["id"]
-    return TASKLIST_ID
+        tasklist_id = lists["items"][0]["id"]
+        session["tasklist_id"] = tasklist_id
+        return tasklist_id
+    created = service.tasklists().insert(body={"title": TASKLIST_TITLE or "Tasks"}).execute()
+    tasklist_id = created["id"]
+    session["tasklist_id"] = tasklist_id
+    return tasklist_id
+
+
+def _build_credentials_from_token(token: dict) -> Credentials:
+    expiry_ts = token.get("expires_at")
+    expiry = None
+    if expiry_ts:
+        try:
+            expiry = datetime.fromtimestamp(expiry_ts, tz=timezone.utc)
+        except Exception:
+            expiry = None
+    if expiry is not None:
+        # google-auth expects naive UTC timestamps for comparisons
+        expiry = expiry.replace(tzinfo=None)
+    return Credentials(
+        token=token.get("access_token"),
+        refresh_token=token.get("refresh_token"),
+        token_uri=GOOGLE_TOKEN_URI,
+        client_id=GOOGLE_CLIENT_ID,
+        client_secret=GOOGLE_CLIENT_SECRET,
+        scopes=SCOPES,
+        expiry=expiry,
+        id_token=token.get("id_token"),
+    )
+
+
+def get_user_credentials() -> Credentials:
+    token = session.get("google_token")
+    if not token:
+        abort(401)
+    creds = _build_credentials_from_token(token)
+    if creds.expired and creds.refresh_token:
+        try:
+            creds.refresh(Request())
+            updated = dict(token)
+            updated["access_token"] = creds.token
+            if creds.expiry:
+                updated["expires_at"] = int(creds.expiry.timestamp())
+            session["google_token"] = updated
+        except Exception:
+            session.pop("google_token", None)
+            session.pop("user_email", None)
+            logger.exception("Failed to refresh Google token; forcing re-login.")
+            abort(401)
+    return creds
 
 
 def create_task(title, notes=None):
@@ -233,12 +333,14 @@ def tasklists():
         return jsonify(
             {
                 "items": [{"id": i.get("id"), "title": i.get("title") or "Untitled"} for i in items],
-                "selected": TASKLIST_ID,
+                "selected": session.get("tasklist_id"),
             }
         )
     except Exception as exc:
         logger.exception("Failed to list tasklists")
-        return jsonify({"items": [], "selected": TASKLIST_ID, "error": str(exc)}), 500
+        return jsonify(
+            {"items": [], "selected": session.get("tasklist_id"), "error": str(exc)}
+        ), 500
 
 
 @app.route("/tasklists/select", methods=["POST"])
@@ -253,11 +355,10 @@ def select_tasklist():
     except Exception as exc:
         logger.exception("Failed to fetch tasklist %s", tasklist_id)
         return jsonify({"ok": False, "message": "Unable to select task list"}), 400
-    global TASKLIST_ID, TASKLIST_TITLE
-    TASKLIST_ID = tasklist_id
-    TASKLIST_TITLE = tl.get("title", TASKLIST_TITLE)
-    logger.info("Tasklist selected: %s (%s)", TASKLIST_TITLE, TASKLIST_ID)
-    return jsonify({"ok": True, "title": TASKLIST_TITLE, "tasklist_id": TASKLIST_ID})
+    session["tasklist_id"] = tasklist_id
+    title = tl.get("title", TASKLIST_TITLE or "Tasks")
+    logger.info("Tasklist selected: %s (%s)", title, tasklist_id)
+    return jsonify({"ok": True, "title": title, "tasklist_id": tasklist_id})
 
 @app.route("/scan", methods=["POST"])
 def scan():
@@ -336,7 +437,12 @@ def ocr():
 @app.context_processor
 def inject_version():
     ver = os.getenv("IMAGE_TAG", "unknown")
-    return {"version": ver, "app_version": ver}
+    return {
+        "version": ver,
+        "app_version": ver,
+        "user_email": session.get("user_email"),
+        "logged_in": is_logged_in(),
+    }
 
 @app.route("/version")
 def version():
@@ -348,15 +454,11 @@ if __name__ == "__main__":
     # Only reclaim the port on the initial run; the reloader child shouldn't kill itself.
     if os.environ.get("WERKZEUG_RUN_MAIN") != "true":
         free_port(PORT)
-        logger.info("Ensuring Google OAuth token is available before starting server...")
-        try:
-            get_creds()
-        except Exception:
-            logger.exception("OAuth flow failed. Fix the issue above and restart the server.")
-            raise
     app.run(
         host="0.0.0.0",
         port=PORT,
         debug=True,
-        ssl_context=(CERT_PATH, CERT_KEY_PATH),
+        ssl_context=(CERT_PATH, CERT_KEY_PATH)
+        if os.path.exists(CERT_PATH) and os.path.exists(CERT_KEY_PATH)
+        else None,
     )

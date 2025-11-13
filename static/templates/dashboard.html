@@ -17,6 +17,32 @@
         color: #1a202c;
       }
 
+      .user-chip {
+        position: fixed;
+        top: 18px;
+        right: 24px;
+        background: rgba(255, 255, 255, 0.92);
+        color: #1a202c;
+        border-radius: 999px;
+        padding: 6px 16px;
+        font-size: 13px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        box-shadow: 0 10px 30px rgba(15, 23, 42, 0.18);
+        z-index: 10;
+      }
+
+      .user-chip a {
+        color: #5a67d8;
+        font-weight: 600;
+        text-decoration: none;
+      }
+
+      .user-chip a:hover {
+        text-decoration: underline;
+      }
+
       body {
         min-height: 100vh;
         margin: 0;
@@ -401,6 +427,12 @@
     </style>
   </head>
   <body>
+    {% if logged_in and user_email %}
+    <div class="user-chip">
+      <span>{{ user_email }}</span>
+      <a href="{{ url_for('logout') }}">Logout</a>
+    </div>
+    {% endif %}
     <div class="shell">
       <div class="scanner-card">
         <header>

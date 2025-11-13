@@ -1,0 +1,23 @@
+{
+  "name": "barcode-scanner-codex",
+  // Universal image: includes Node, Python, and common tooling
+  // Good fit for Codespaces and Codex CLI
+  "image": "mcr.microsoft.com/devcontainers/universal:2",
+
+  // Forward Flask default port so Codespaces exposes it in the UI
+  "forwardPorts": [5000],
+
+  // After the container is built:
+  // 1) install your Python deps if requirements.txt exists
+  // 2) install Codex CLI globally via npm
+  "postCreateCommand": "bash -lc 'if [ -f requirements.txt ]; then pip install -r requirements.txt; fi; npm i -g @openai/codex'",
+
+  // Optional: open your main app file automatically when Codespace starts
+  "customizations": {
+    "codespaces": {
+      "openFiles": [
+        "app.py"
+      ]
+    }
+  }
+}

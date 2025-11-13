@@ -1,10 +1,16 @@
 version: "3.8"
 services:
   scanner:
-    image: ghcr.io/ilpeppino/barcode-scanner:stable # or :latest / :v1.3.0
+    image: ghcr.io/ilpeppino/barcode-scanner:stable     # or ghcr.io/... if pulling
     restart: unless-stopped
     env_file:
       - /volume1/NAS Shared Folder/secrets/barcode-scanner/.env
+    environment:
+      PORT: "5000"
+      IMAGE_TAG: "${IMAGE_TAG:-nas}"
+      CURRENT_APP_VERSION: "${CURRENT_APP_VERSION:-v1.4.0}"
+      DEPLOY_ALERT_WEBHOOK: "${DEPLOY_ALERT_WEBHOOK:-}"
+      DEPLOY_ALERT_HOSTNAME: "${DEPLOY_ALERT_HOSTNAME:-synology}"
     volumes:
       - ./docs:/app/docs:ro
       - ./static/templates:/app/static/templates:ro

@@ -8,7 +8,7 @@ A small Flask application that lets you point any camera (desktop or phone) at g
 
 | Component | Description |
 | --- | --- |
-| `app.py` | Flask + Gunicorn backend. Handles Google Tasks OAuth, barcode dedupe, OCR routing (pytesseract), Open Food Facts enrichment, and REST endpoints. |
+| `app.py` | Flask + Gunicorn backend. Handles Google Tasks OAuth, barcode dedupe, OCR routing (EasyOCR), Open Food Facts enrichment, and REST endpoints. |
 | `static/templates/dashboard.html` | Unified HTML/JS dashboard: USB scanners, auto barcode capture, OCR capture, recent history, task-list switcher. |
 | `docs/qrcodes.pdf` | Printable QR codes to open the dashboard from your phone. |
 
@@ -17,7 +17,7 @@ Workflow:
 1. You authenticate once with Google Tasks (Desktop OAuth client).  
 2. The dashboard auto-starts your camera (HTTPS context) and continuously listens for barcodes or on-demand OCR captures.  
 3. Each barcode is normalized, de-duplicated (3 s cooldown), optionally enriched with Open Food Facts, and inserted into your selected Google Tasks list.  
-4. OCR captures route through pytesseract and the extracted text is shown immediately in the UI for easy copy/paste.  
+4. OCR captures route through EasyOCR and the extracted text is shown immediately in the UI for easy copy/paste.  
 5. Recent scans + OCR updates refresh automatically so operators always see what just went in.
 
 ---
@@ -27,7 +27,7 @@ Workflow:
 | Requirement | Notes |
 | --- | --- |
 | Python 3.10+ (for local dev) | Repo tested with 3.11. |
-| Tesseract OCR binary | `brew install tesseract` (macOS) / `apt install tesseract-ocr` (Debian/Ubuntu). Needed even in Docker builds. |
+| EasyOCR runtime deps | macOS: `brew install libomp`. Debian/Ubuntu: `apt install libglib2.0-0 libsm6 libxrender1 libxext6 ffmpeg`. Dockerfile already installs them. |
 | Google Cloud project | Enable **Google Tasks API**, create an OAuth *Web application* client, add redirect URIs, and paste the Client ID/secret into `.env`. |
 | HTTPS access for cameras | Browsers only grant camera access on HTTPS or `localhost`. For WAN/LAN access use Cloudflare, Let’s Encrypt, mkcert, etc. |
 | Domain/DNS (optional but recommended) | Example: `gtemp1.com` on Hostinger with Cloudflare proxying to your NAS. |
@@ -47,11 +47,32 @@ google-auth-httplib2==0.2.0
 requests==2.32.3
 python-dotenv==1.0.1
 gunicorn
-pytesseract==0.3.10
 Pillow==11.0.0
+Authlib==1.3.1
+numpy==1.26.4
+opencv-python-headless==4.10.0.84
+torch==2.2.1
+torchvision==0.17.1
+easyocr==1.7.1
 ```
 
 Running `pip install -r requirements.txt` installs the exact versions above.
+
+### EasyOCR setup
+
+1. **System libraries** – install OpenCV dependencies (macOS: `brew install libomp`; Debian/Ubuntu: `apt install libglib2.0-0 libsm6 libxext6 libxrender1 ffmpeg`). These are already part of the Dockerfile.
+2. **Model cache** – EasyOCR downloads detection/recognition weights into `~/.EasyOCR` the first time it runs. Keep that directory writable or mount a persistent volume (e.g., `/root/.EasyOCR`) so models aren’t re-downloaded every boot.
+3. **Languages** – configure `EASYOCR_LANGS` in `.env` (comma-separated ISO codes). Default is `en`.
+4. **GPU toggle** – set `EASYOCR_USE_GPU=1` only if you have a CUDA-capable GPU and the matching PyTorch build. Otherwise leave it at `0`.
+5. **Smoke test** – after installing requirements, run:
+   ```bash
+   python - <<'PY'
+   import easyocr
+   reader = easyocr.Reader(['en'], gpu=False)
+   print("EasyOCR ready:", reader is not None)
+   PY
+   ```
+   The first execution downloads models; later runs reuse the cache.
 
 
 ---
@@ -153,7 +174,7 @@ docker compose up -d
 ## Camera Requirements & Modes
 
 - Barcode mode uses the browser’s `BarcodeDetector` API. Unsupported browsers (older Safari) automatically fall back to OCR mode only.
-- OCR mode leverages pytesseract; the dashboard preprocesses captures (grayscale + contrast) before uploading to `/ocr`.
+- OCR mode leverages EasyOCR; the dashboard sends the raw camera frame to `/ocr`, where EasyOCR handles detection + recognition locally.
 - **HTTPS is mandatory** for mobile camera use. For WAN, proxy through Cloudflare/Let’s Encrypt. For LAN, trust mkcert or run via `ngrok`/Cloudflare Tunnel.
 
 ---

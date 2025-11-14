@@ -12,3 +12,4 @@ node_modules
 certs/*.key
 certs/*.crt
 *.pem
+.311

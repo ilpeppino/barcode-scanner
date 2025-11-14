@@ -23,7 +23,7 @@ import requests
 import signal
 import subprocess
 
-from PIL import Image, ImageOps, ImageEnhance
+from PIL import Image
 import pkgutil
 
 if not hasattr(pkgutil, "find_loader"):
@@ -34,7 +34,8 @@ if not hasattr(pkgutil, "find_loader"):
         return spec.loader if spec else None
 
     pkgutil.find_loader = _compat_find_loader  # type: ignore[attr-defined]
-import pytesseract
+import numpy as np
+import easyocr
 
 import logging
 
@@ -59,6 +60,10 @@ GOOGLE_TOKEN_URI = "https://oauth2.googleapis.com/token"
 GOOGLE_API_BASE = "https://accounts.google.com/.well-known/openid-configuration"
 CERT_PATH = os.getenv("CERT_PATH", "local.pem").strip()
 CERT_KEY_PATH = os.getenv("CERT_KEY_PATH", "local-key.pem").strip()
+EASYOCR_LANGS = [lang.strip() for lang in os.getenv("EASYOCR_LANGS", "en").split(",") if lang.strip()]
+if not EASYOCR_LANGS:
+    EASYOCR_LANGS = ["en"]
+EASYOCR_USE_GPU = os.getenv("EASYOCR_USE_GPU", "0").lower() in {"1", "true", "yes"}
 
 # Tell Flask where the Jinja templates actually live (they're under static/templates).
 app = Flask(__name__, template_folder="static/templates", static_folder="static")
@@ -78,6 +83,18 @@ oauth.register(
 )
 
 PUBLIC_ENDPOINTS = {"login", "auth_callback", "logout", "static", "version"}
+
+
+def _init_easyocr():
+    try:
+        logger.info("Initializing EasyOCR reader (langs=%s, gpu=%s)", EASYOCR_LANGS, EASYOCR_USE_GPU)
+        return easyocr.Reader(EASYOCR_LANGS, gpu=EASYOCR_USE_GPU, verbose=False)
+    except Exception:
+        logger.exception("Failed to initialize EasyOCR")
+        return None
+
+
+OCR_ENGINE = _init_easyocr()
 
 
 def is_logged_in() -> bool:
@@ -402,6 +419,22 @@ def clear_recent():
     return jsonify({"ok": True})
 
 
+def extract_text_with_easyocr(image: Image.Image) -> str:
+    if OCR_ENGINE is None:
+        raise RuntimeError("EasyOCR reader unavailable")
+    np_img = np.array(image.convert("RGB"))
+    try:
+        results = OCR_ENGINE.readtext(np_img, detail=0)
+    except Exception as exc:
+        raise RuntimeError(f"EasyOCR inference failed: {exc}") from exc
+    lines = []
+    for entry in results or []:
+        text = (entry or "").strip()
+        if text:
+            lines.append(text)
+    return "\n".join(lines).strip()
+
+
 @app.route("/ocr", methods=["POST"])
 def ocr():
     """Accept an uploaded image and return OCR text."""
@@ -418,20 +451,12 @@ def ocr():
         logger.exception("Unable to open uploaded file for OCR")
         return jsonify({"ok": False, "message": "Unable to read image"}), 400
 
-    # Preprocess: grayscale + contrast + slight sharpening + adaptive threshold
-    image = ImageOps.grayscale(raw_image)
-    image = ImageEnhance.Contrast(image).enhance(1.8)
-    image = ImageEnhance.Sharpness(image).enhance(1.2)
-    image = image.point(lambda x: 0 if x < 140 else 255, "L")
-
-    language = request.form.get("language") or "eng"
-    config = request.form.get("tesseract_config") or ""
     try:
-        text = pytesseract.image_to_string(image, lang=language, config=config).strip()
-    except pytesseract.TesseractError as exc:
-        logger.exception("Tesseract OCR failed")
+        text = extract_text_with_easyocr(raw_image)
+    except Exception as exc:
+        logger.exception("EasyOCR failed")
         return jsonify({"ok": False, "message": f"OCR failed: {exc}"}), 500
-    return jsonify({"ok": True, "text": text, "language": language})
+    return jsonify({"ok": True, "text": text, "engine": "easyocr", "languages": EASYOCR_LANGS})
 
 # expose version everywhere in templates
 @app.context_processor

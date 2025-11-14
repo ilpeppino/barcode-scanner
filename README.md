@@ -103,11 +103,15 @@ Running `pip install -r requirements.txt` installs the exact versions above.
 
 ## Production Deployment (Docker)
 
-You can build locally or on your NAS:
+Build and push a multi-arch image to GHCR (replace `<user>` and version):
 
 ```bash
-# from repo root
-docker build -t barcode-scanner:latest .
+cd ~/dev/barcode-scanner-clean
+docker buildx build \
+  --platform linux/amd64,linux/arm64 \
+  -t ghcr.io/<user>/barcode-scanner:v1.4.0 \
+  -t ghcr.io/<user>/barcode-scanner:stable \
+  --push .
 ```
 
 Example `docker-compose.yml` (Cloudflare terminates HTTPS, container serves HTTP on 5000):
@@ -116,22 +120,20 @@ Example `docker-compose.yml` (Cloudflare terminates HTTPS, container serves HTTP
 version: "3.8"
 services:
   scanner:
-    image: barcode-scanner:latest
+    image: ghcr.io/<user>/barcode-scanner:stable
     restart: unless-stopped
     env_file:
       - ./.env
-    environment:
-      PORT: "5000"
-      IMAGE_TAG: "${IMAGE_TAG:-dev}"
     ports:
       - "5050:5000"        # NAS:5050 → container:5000
 ```
 
-Run/recreate:
+Deploy / upgrade:
 
 ```bash
 docker compose down
-docker compose up -d --build
+docker compose pull scanner
+docker compose up -d
 ```
 
 ### TLS options
@@ -142,14 +144,9 @@ docker compose up -d --build
    - Use Cloudflare Access for optional auth, caching, WAF.  
    - Result: browser sees HTTPS, container stays simple.
 
-2. **Direct TLS**
-   - Obtain cert/key (`Let’s Encrypt`, Hostinger SSL manager, mkcert).  
-   - Place as `certs/dsplay418.crt` + `certs/dsplay418.key`.  
-   - Container already launches gunicorn with `--certfile/--keyfile`; just mount the files read-only.
-
-3. **mkcert for LAN testing**
+2. **mkcert for LAN testing**
    - `mkcert <nas-hostname>`  
-   - Install mkcert CA on iOS/Android for trusted HTTPS over LAN.
+   - Install mkcert CA on iOS/Android for trusted HTTPS over LAN, then front the container with nginx/traefik locally if you need HTTPS.
 
 ---
 

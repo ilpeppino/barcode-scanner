@@ -1,4 +1,4 @@
-name: 🚀 Build and Publish Docker Image
+name: 🚀 Build, Publish and Deploy Docker Image
 
 on:
   push:
@@ -36,14 +36,16 @@ jobs:
             -t $REGISTRY/$IMAGE_NAME:stable \
             --push .
 
-      - name: 🚀 Deploy on NAS
-        uses: appleboy/ssh-action@v0.1.10
-        with:
-          host: ${{ secrets.NAS_HOST }}
-          username: ${{ secrets.NAS_USER }}
-          key: ${{ secrets.NAS_SSH_KEY }}
-          script: |
-            cd /volume1/NAS Shared Folder/barcode-scanner-clean
-            docker-compose down
-            docker-compose pull scanner
-            docker-compose up -d
+  deploy-to-nas:
+    runs-on: self-hosted
+    needs: build-and-push
+
+    steps:
+      - name: 🚢 Deploy updated image to NAS via SSH
+        run: |
+          ssh nas << 'EOF'
+          cd "/volume1/NAS Shared Folder/barcode-scanner-clean"
+          docker-compose down
+          docker-compose pull scanner
+          docker-compose up -d
+          EOF

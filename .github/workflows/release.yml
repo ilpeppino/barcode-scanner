@@ -43,9 +43,16 @@ jobs:
     steps:
       - name: 🚢 Deploy updated image to NAS via SSH
         run: |
-          ssh nas << 'EOF'
+          set -e
+
+          echo ">>> Connecting to NAS and deploying…"
+          ssh ilpeppino@192.168.178.45 << 'EOF'
+          set -e
           cd "/volume1/NAS Shared Folder/barcode-scanner-clean"
-          docker-compose down
-          docker-compose pull scanner
-          docker-compose up -d
+
+          sudo -n /usr/local/bin/docker-compose down
+          sudo -n /usr/local/bin/docker-compose pull scanner
+          sudo -n /usr/local/bin/docker-compose up -d
+
+          echo ">>> Deployment on NAS finished."
           EOF
